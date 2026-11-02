@@ -240,9 +240,11 @@ class LlamaServerEngine(InferenceEngine):
                 logger.error(self._error_message)
                 return False
 
-            # Probe /health endpoint
+            # Probe /health endpoint. On Windows a connect to a loopback port that is not
+            # listening yet is retried for about a second instead of being refused, so keep
+            # the connect timeout short; a listening port accepts in well under 1 ms.
             try:
-                async with httpx.AsyncClient(timeout=1.0) as client:
+                async with httpx.AsyncClient(timeout=httpx.Timeout(1.0, connect=0.05)) as client:
                     resp = await client.get(f"http://{config.host}:{config.port}/health")
                     if resp.status_code == 200:
                         is_ready = True
@@ -250,7 +252,7 @@ class LlamaServerEngine(InferenceEngine):
             except Exception:
                 pass
 
-            await asyncio.sleep(0.3)
+            await asyncio.sleep(0.1)
 
         if not is_ready:
             self._error_message = f"llama-server startup timed out after {settings.ENGINE_STARTUP_TIMEOUT_SECONDS}s."

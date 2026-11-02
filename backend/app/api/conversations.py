@@ -91,7 +91,7 @@ async def list_conversations(
             SELECT 
                 c.id, c.title, c.model, c.system_prompt, c.profile_id, c.created_at, c.updated_at,
                 COUNT(m.id) AS message_count,
-                (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC LIMIT 1) AS last_message
+                (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC, rowid DESC LIMIT 1) AS last_message
             FROM conversations c
             LEFT JOIN messages m ON c.id = m.conversation_id
             GROUP BY c.id
@@ -167,7 +167,7 @@ async def get_conversation(conversation_id: str):
         conv = conv_row[0]
 
         msg_rows = await db.execute_fetchall(
-            "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
+            "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
             (conversation_id,),
         )
         messages = [
@@ -236,7 +236,7 @@ async def update_conversation(conversation_id: str, req: UpdateConversationReque
         msg_count = cnt_row[0]["count"] if cnt_row else 0
 
         last_row = await db.execute_fetchall(
-            "SELECT content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+            "SELECT content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
             (conversation_id,),
         )
         last_msg = last_row[0]["content"] if last_row else None
@@ -288,7 +288,7 @@ async def truncate_conversation_messages(conversation_id: str, req: TruncateRequ
     db = await get_db()
     try:
         target_row = await db.execute_fetchall(
-            "SELECT created_at FROM messages WHERE id = ? AND conversation_id = ?",
+            "SELECT created_at, rowid FROM messages WHERE id = ? AND conversation_id = ?",
             (req.message_id, conversation_id),
         )
         if not target_row:
@@ -297,17 +297,16 @@ async def truncate_conversation_messages(conversation_id: str, req: TruncateRequ
                 detail=f"Message '{req.message_id}' not found in conversation '{conversation_id}'",
             )
         target_created_at = target_row[0]["created_at"]
+        target_rowid = target_row[0]["rowid"]
 
-        if req.inclusive:
-            await db.execute(
-                "DELETE FROM messages WHERE conversation_id = ? AND created_at >= ?",
-                (conversation_id, target_created_at),
-            )
-        else:
-            await db.execute(
-                "DELETE FROM messages WHERE conversation_id = ? AND created_at > ?",
-                (conversation_id, target_created_at),
-            )
+        # Messages saved within one clock tick share created_at (about 16 ms on Windows):
+        # insertion order (rowid) decides which of them come after the target.
+        rowid_op = ">=" if req.inclusive else ">"
+        await db.execute(
+            "DELETE FROM messages WHERE conversation_id = ? "
+            f"AND (created_at > ? OR (created_at = ? AND rowid {rowid_op} ?))",
+            (conversation_id, target_created_at, target_created_at, target_rowid),
+        )
 
         now = time.time()
         await db.execute(

@@ -267,7 +267,14 @@ async def list_models():
     if not settings.MODELS_DIR.exists():
         return models
 
-    for file_path in settings.MODELS_DIR.glob("*.gguf"):
+    # Include models in subfolders (downloads are stored per repository), but not hidden
+    # folders such as .downloads; a file name already listed is not repeated.
+    seen_names: set[str] = set()
+    for file_path in sorted(settings.MODELS_DIR.rglob("*.gguf")):
+        folders = file_path.relative_to(settings.MODELS_DIR).parts[:-1]
+        if any(part.startswith(".") for part in folders) or file_path.name in seen_names:
+            continue
+        seen_names.add(file_path.name)
         if file_path.is_file():
             stat = file_path.stat()
             size_mb = round(stat.st_size / (1024 * 1024), 2)
@@ -297,7 +304,7 @@ async def get_model_memory_estimate(
     Returns pre-flight advisory VRAM estimate based on GGUF tensor metadata.
     Advisory only; runtime allocation by llama.cpp remains authoritative.
     """
-    resolved_path = security.validate_model_path(filename)
+    resolved_path = await resolve_model_reference(filename)
     # GGUF parsing takes seconds on real models: keep it off the event loop.
     return await asyncio.to_thread(
         estimate_model_memory,
@@ -306,6 +313,23 @@ async def get_model_memory_estimate(
         target_ctx=n_ctx,
         kv_type=kv_type,
     )
+
+
+async def resolve_model_reference(reference: str) -> Path:
+    """
+    Resolve a model reference from the UI: a library model id, a file name at the top of
+    the models folder, or the bare file name of a library model stored in a subfolder
+    (downloads are saved per repository, e.g. "Org--Repo/model.gguf").
+    """
+    model = await model_library.get_model_by_id(reference)
+    if model:
+        return Path(model["canonical_path"])
+    bare_name = "/" not in reference and "\\" not in reference
+    if bare_name and not (settings.MODELS_DIR / reference).exists():
+        matches = [m for m in await model_library.get_all_models() if m["filename"] == reference]
+        if len(matches) == 1:
+            return security.validate_model_path(matches[0]["canonical_path"])
+    return security.validate_model_path(reference)
 
 
 @router.post("/load", response_model=EngineStatus)
@@ -319,12 +343,7 @@ async def load_model(
     Supports either stable model_id or filename.
     Authenticated with X-Mustang-Token.
     """
-    # Check if req.model_name is a model_id in library
-    model = await model_library.get_model_by_id(req.model_name)
-    if model:
-        resolved_path = Path(model["canonical_path"])
-    else:
-        resolved_path = security.validate_model_path(req.model_name)
+    resolved_path = await resolve_model_reference(req.model_name)
 
     config = EngineConfig(
         model_path=resolved_path,

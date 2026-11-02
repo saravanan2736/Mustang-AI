@@ -200,7 +200,7 @@ async def chat_completions(
         if chat_req.messages and chat_req.messages[-1].role == "user":
             last_msg = chat_req.messages[-1]
             last_db_rows = await db.execute_fetchall(
-                "SELECT content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1",
+                "SELECT content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
                 (conv_id,),
             )
             already_recorded = bool(last_db_rows and last_db_rows[0]["content"] == last_msg.content)
@@ -258,7 +258,7 @@ async def regenerate_response(
 
         # Get all messages
         msg_rows = await db.execute_fetchall(
-            "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC",
+            "SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC",
             (conv_id,),
         )
         if not msg_rows:

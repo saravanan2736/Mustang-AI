@@ -62,7 +62,7 @@ Tests run against a private run directory and a private, hard-linked copy of `mo
 
 ---
 
-## Desktop App (Milestone 4, in progress)
+## Desktop App (Milestone 4, release candidate 0.1.0)
 
 Requires Rust (MSVC toolchain, pinned by `rust-toolchain.toml`) and Visual Studio Build Tools (C++).
 
@@ -71,7 +71,7 @@ cd "S:\Mustang AI"
 npm run desktop:dev        # native window; backend from source (backend\.venv), UI from Vite on 5173
 npm run desktop:build      # embedded Python runtime + release app: src-tauri\target\release\mustang-desktop.exe
 npm run runtime:test       # backend test suite inside the embedded runtime
-npm run release:build      # Windows installer: buildelease\<version>\Mustang AI_<version>_x64-setup.exe
+npm run release:build      # Windows installer: build\release\<version>\Mustang AI_<version>_x64-setup.exe
 npm run version:set -- 0.2.0   # bump the version in every file that records it
 ```
 
@@ -82,5 +82,7 @@ Signing and opt-in updates are configured through environment variables; see `sc
 - Release builds bundle a pruned llama.cpp b12000 CUDA 13.4 runtime (`build\desktop-runtime\llama`, verified against `runtime-manifest.json` at every start). Without an NVIDIA GPU, or with a driver older than R580, inference falls back to the CPU and the app says so.
 - The app keeps running in the system tray when its window is closed (Settings → Desktop to change), stops the engine gracefully on Quit or Windows logoff, and accepts `mustang-desktop.exe --unload-model` / `--quit` from a second launch.
 - Build release binaries with `npm run desktop:build` only. A plain `cargo build --release` produces a dev-mode binary that loads the Vite dev server.
+- Downloaded models are stored per repository in subfolders of the models folder; they are listed and loaded by file name like top-level models.
+- Users: install with `Mustang AI_<version>_x64-setup.exe` (per user, no admin). Help: `docs\TROUBLESHOOTING.md`. Release notes and test status: `docs\milestone-4\M4_RELEASE_NOTES_0.1.0.md`, `docs\milestone-4\M4_PHASEG_RELEASE_REPORT.md`.
 - Design and status: `docs\milestone-4\`.
 
