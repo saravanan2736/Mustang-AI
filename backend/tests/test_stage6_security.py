@@ -215,7 +215,7 @@ async def test_bootstrap_origin_enforcement(async_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_management_endpoints_require_token(async_client: AsyncClient):
+async def test_management_endpoints_require_token(anon_client: AsyncClient):
     """
     Exhaustively tests that every state-mutating endpoint requires a valid X-Mustang-Token.
     """
@@ -232,16 +232,16 @@ async def test_management_endpoints_require_token(async_client: AsyncClient):
     for method, path, payload in endpoints:
         # Request without header
         if method == "POST":
-            r_no_auth = await async_client.post(path, json=payload or {})
+            r_no_auth = await anon_client.post(path, json=payload or {})
         elif method == "DELETE":
-            r_no_auth = await async_client.delete(path)
+            r_no_auth = await anon_client.delete(path)
         assert r_no_auth.status_code == 401, f"{method} {path} succeeded without token!"
 
         # Request with bogus token
         bogus_headers = {settings.TOKEN_HEADER_NAME: "deadbeefcafebabe000000000000000000000000000000000000000000000000"}
         if method == "POST":
-            r_bogus = await async_client.post(path, json=payload or {}, headers=bogus_headers)
+            r_bogus = await anon_client.post(path, json=payload or {}, headers=bogus_headers)
         elif method == "DELETE":
-            r_bogus = await async_client.delete(path, headers=bogus_headers)
+            r_bogus = await anon_client.delete(path, headers=bogus_headers)
         assert r_bogus.status_code == 401, f"{method} {path} accepted invalid token!"
 

@@ -146,7 +146,7 @@ async def test_detection_of_deleted_and_moved_files(test_models_sandbox: Path):
 
 
 @pytest.mark.asyncio
-async def test_active_model_deletion_protection(async_client: AsyncClient, mock_engine, auth_headers):
+async def test_active_model_deletion_protection(async_client: AsyncClient, anon_client: AsyncClient, mock_engine, auth_headers):
     """Verifies that attempting to delete an actively loaded model returns HTTP 400."""
     await async_client.post("/api/models/scan")
     lib = (await async_client.get("/api/models/library")).json()
@@ -164,7 +164,7 @@ async def test_active_model_deletion_protection(async_client: AsyncClient, mock_
 
     # Stop engine and verify delete without auth fails with 401
     await mock_engine.stop()
-    unauth_del = await async_client.delete(f"/api/models/{qwen['id']}")
+    unauth_del = await anon_client.delete(f"/api/models/{qwen['id']}")
     assert unauth_del.status_code == 401
 
 

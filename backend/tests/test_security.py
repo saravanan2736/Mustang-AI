@@ -13,18 +13,18 @@ from fastapi import HTTPException
 
 
 @pytest.mark.asyncio
-async def test_session_token_protection(async_client: AsyncClient):
+async def test_session_token_protection(anon_client: AsyncClient):
     """Verifies that management endpoints strictly reject unauthorized requests."""
     # Attempt load without token
-    res = await async_client.post("/api/models/load", json={"model_name": "test.gguf"})
+    res = await anon_client.post("/api/models/load", json={"model_name": "test.gguf"})
     assert res.status_code == 401
 
     # Attempt unload without token
-    res = await async_client.post("/api/models/unload")
+    res = await anon_client.post("/api/models/unload")
     assert res.status_code == 401
 
     # Attempt stop without token
-    res = await async_client.post("/api/chat/stop")
+    res = await anon_client.post("/api/chat/stop")
     assert res.status_code == 401
 
 

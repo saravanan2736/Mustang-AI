@@ -13,6 +13,11 @@ logger = logging.getLogger("mustang.db")
 
 DB_PATH: Path = settings.RUN_DIR / "mustang.db"
 
+# Stored in PRAGMA user_version. v1 = the Milestone 3 schema below (legacy databases
+# report 0). Bump when a migration is added; a backup is taken before migrating.
+SCHEMA_VERSION = 1
+BACKUP_KEEP = 5
+
 INIT_SQL = """
 PRAGMA journal_mode = WAL;
 PRAGMA foreign_keys = ON;
@@ -158,10 +163,40 @@ async def get_db() -> aiosqlite.Connection:
     return db
 
 
+class NewerSchemaError(RuntimeError):
+    """The database was written by a newer Mustang AI build than this one."""
+
+
+async def _backup_database(db: aiosqlite.Connection, from_version: int) -> Path:
+    """Consistent online copy (SQLite backup API) into <db dir>/backups/, keeping the newest BACKUP_KEEP."""
+    backup_dir = DB_PATH.parent / "backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    target = backup_dir / f"mustang-schema{from_version}-{stamp}.db"
+    async with aiosqlite.connect(str(target)) as dst:
+        await db.backup(dst)
+    existing = sorted(backup_dir.glob("mustang-schema*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in existing[BACKUP_KEEP:]:
+        old.unlink(missing_ok=True)
+    return target
+
+
 async def init_db():
     """Initializes schema, applies migrations, seeds defaults, and recovers stale state on startup."""
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    had_data = DB_PATH.exists() and DB_PATH.stat().st_size > 0
     async with aiosqlite.connect(str(DB_PATH)) as db:
+        async with db.execute("PRAGMA user_version;") as cur:
+            current_version = (await cur.fetchone())[0]
+        if current_version > SCHEMA_VERSION:
+            raise NewerSchemaError(
+                f"Database {DB_PATH} uses schema v{current_version}, but this build supports up to "
+                f"v{SCHEMA_VERSION}. It was created by a newer Mustang AI; refusing to modify it."
+            )
+        if had_data and current_version < SCHEMA_VERSION:
+            backup = await _backup_database(db, current_version)
+            logger.info(f"Backed up database (schema v{current_version}) to {backup} before migrating")
+
         await db.executescript(INIT_SQL)
 
         # Migration: ensure profile_id column exists on conversations table if created previously
@@ -220,5 +255,6 @@ async def init_db():
             """
         )
 
+        await db.execute(f"PRAGMA user_version = {SCHEMA_VERSION};")
         await db.commit()
-    logger.info(f"SQLite database initialized and verified at {DB_PATH}")
+    logger.info(f"SQLite database initialized and verified at {DB_PATH} (schema v{SCHEMA_VERSION})")

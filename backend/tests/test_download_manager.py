@@ -435,18 +435,18 @@ def test_state_machine_transition_rules():
 # ==================== 7. API ENDPOINT & ACTION TESTS ====================
 
 @pytest.mark.asyncio
-async def test_unauthenticated_download_actions_rejected(async_client: AsyncClient, mock_dm_client):
+async def test_unauthenticated_download_actions_rejected(anon_client: AsyncClient, mock_dm_client):
     """Verifies that POST /api/downloads endpoints require X-Mustang-Token authentication."""
-    r1 = await async_client.post("/api/downloads", json={"repo_id": "a/b", "filename": "c.gguf"})
+    r1 = await anon_client.post("/api/downloads", json={"repo_id": "a/b", "filename": "c.gguf"})
     assert r1.status_code == 401
 
-    r2 = await async_client.post("/api/downloads/dl-fake/pause")
+    r2 = await anon_client.post("/api/downloads/dl-fake/pause")
     assert r2.status_code == 401
 
-    r3 = await async_client.post("/api/downloads/dl-fake/resume")
+    r3 = await anon_client.post("/api/downloads/dl-fake/resume")
     assert r3.status_code == 401
 
-    r4 = await async_client.post("/api/downloads/dl-fake/cancel")
+    r4 = await anon_client.post("/api/downloads/dl-fake/cancel")
     assert r4.status_code == 401
 
 

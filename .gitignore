@@ -24,3 +24,6 @@ backend/run/.mustang_token
 backend/run/*.log
 backend/run/*.gguf
 backend/run/temp_*
+
+# Per-run private test models folder (hard links to models/*.gguf)
+.mustang-test-models-*/

@@ -6,7 +6,7 @@ Lifespan supervisor, middleware registration, and API routing.
 import logging
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import router as auth_router
@@ -38,9 +38,12 @@ logger = logging.getLogger("mustang.main")
 async def lifespan(app: FastAPI):
     # 1. Startup phase
     logger.info("Initializing Mustang AI backend security and persistence...")
-    token = security.initialize_security_token()
-    logger.info(f"Session token generated (recorded to {settings.RUN_DIR / '.mustang_token'})")
-    
+    security.initialize_security_token()
+    if settings.DESKTOP:
+        logger.info("Desktop mode: session token supplied by the desktop shell (not written to disk)")
+    else:
+        logger.info(f"Session token generated (recorded to {settings.RUN_DIR / '.mustang_token'})")
+
     await init_db()
 
     # Determine engine variant (Mock for tests/CI or LlamaServerEngine for live inference)
@@ -87,14 +90,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Register routers
+# Register routers.
+# system_router protects its own routes (only /health is public); auth_router is the
+# origin-checked dev bootstrap. Every other API and /v1 route requires X-Mustang-Token.
 app.include_router(system_router)
 app.include_router(auth_router)
-app.include_router(models_router)
-app.include_router(downloads_router)
-app.include_router(hf_router)
-app.include_router(conversations_router)
-app.include_router(profiles_router)
-app.include_router(settings_router)
-app.include_router(chat_router)
-app.include_router(openai_router)
+
+_require_token = [Depends(security.verify_session_token)]
+for _router in (
+    models_router,
+    downloads_router,
+    hf_router,
+    conversations_router,
+    profiles_router,
+    settings_router,
+    chat_router,
+    openai_router,
+):
+    app.include_router(_router, dependencies=_require_token)

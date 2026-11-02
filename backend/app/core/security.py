@@ -22,12 +22,28 @@ _BOOT_TIME: float = time.time()
 _BOOTSTRAP_CONSUMED: bool = False
 
 
+MIN_PROVIDED_TOKEN_LENGTH = 32
+
+
 def initialize_security_token() -> str:
-    """Generate ephemeral session token and record to run/.mustang_token."""
+    """
+    Establish the session token.
+    Desktop mode: the shell supplies it (MUSTANG_SESSION_TOKEN) and it is never written to disk.
+    Browser dev mode: generate an ephemeral token and record it to run/.mustang_token.
+    """
     global _BOOTSTRAP_TOKEN, _BOOT_TIME, _BOOTSTRAP_CONSUMED
-    _BOOTSTRAP_TOKEN = secrets.token_hex(32)
+    provided = settings.SESSION_TOKEN.get_secret_value()
+    if provided:
+        if len(provided) < MIN_PROVIDED_TOKEN_LENGTH:
+            raise RuntimeError(f"MUSTANG_SESSION_TOKEN must be at least {MIN_PROVIDED_TOKEN_LENGTH} characters.")
+        _BOOTSTRAP_TOKEN = provided
+    else:
+        _BOOTSTRAP_TOKEN = secrets.token_hex(32)
     _BOOT_TIME = time.time()
     _BOOTSTRAP_CONSUMED = False
+
+    if settings.DESKTOP:
+        return _BOOTSTRAP_TOKEN
 
     token_file = settings.RUN_DIR / ".mustang_token"
     token_file.write_text(_BOOTSTRAP_TOKEN, encoding="utf-8")

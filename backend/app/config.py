@@ -4,6 +4,7 @@ Strict localhost binding, deterministic directories, and security constants.
 """
 
 from pathlib import Path
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,9 +39,24 @@ class Settings(BaseSettings):
         "http://127.0.0.1:1420",
         "http://localhost:1420",
         "tauri://localhost",
+        "http://tauri.localhost",  # Tauri 2 WebView2 origin on Windows (measured in M4 Phase B)
     ]
     TOKEN_HEADER_NAME: str = "X-Mustang-Token"
-    BOOTSTRAP_WINDOW_SECONDS: int = 60
+    # 0 = no time limit. Bootstrap is only reachable from an allow-listed Origin and is
+    # disabled entirely in desktop mode, where the shell hands the token to the UI over IPC.
+    BOOTSTRAP_WINDOW_SECONDS: int = 0
+
+    # Desktop shell integration (M4). Set by the Tauri shell; unset in browser dev mode.
+    DESKTOP: bool = False
+    SESSION_TOKEN: SecretStr = SecretStr("")
+    LOG_DIR: Path | None = None
+
+    @field_validator("HOST", "ENGINE_HOST")
+    @classmethod
+    def _loopback_only(cls, value: str) -> str:
+        if value not in ("127.0.0.1", "localhost"):
+            raise ValueError(f"Refusing non-loopback bind address {value!r}")
+        return value
 
     # Default Generation Parameters
     DEFAULT_MAX_TOKENS: int = 2048
