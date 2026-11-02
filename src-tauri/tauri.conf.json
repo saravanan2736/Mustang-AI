@@ -26,7 +26,9 @@
       }
     ],
     "security": {
-      "capabilities": ["main"],
+      "capabilities": [
+        "main"
+      ],
       "freezePrototype": true,
       "csp": {
         "default-src": "'self'",
@@ -44,13 +46,33 @@
     }
   },
   "bundle": {
-    "active": false,
-    "targets": ["nsis"],
+    "active": true,
+    "targets": [
+      "nsis"
+    ],
+    "publisher": "Mustang AI",
+    "copyright": "Copyright © 2026 Mustang AI",
+    "category": "Productivity",
+    "shortDescription": "Local-first AI chat with open-weight models on your own GPU",
+    "longDescription": "Mustang AI runs open-weight language models locally with NVIDIA CUDA acceleration. No accounts, no cloud services required.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      },
+      "nsis": {
+        "installMode": "currentUser",
+        "installerIcon": "icons/icon.ico",
+        "startMenuFolder": "Mustang AI",
+        "installerHooks": "windows/installer-hooks.nsh",
+        "compression": "lzma"
+      }
+    }
   }
 }

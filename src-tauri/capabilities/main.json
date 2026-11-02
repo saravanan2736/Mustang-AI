@@ -14,6 +14,12 @@
     "allow-reset-models-folder",
     "allow-open-folder",
     "allow-open-external",
+    "allow-list-backups",
+    "allow-restore-backup",
+    "allow-update-settings",
+    "allow-set-auto-check-updates",
+    "allow-check-for-update",
+    "allow-install-update",
     "core:event:allow-listen",
     "core:event:allow-unlisten"
   ]

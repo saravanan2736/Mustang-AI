@@ -80,14 +80,26 @@ pub struct DesktopSettings {
     pub legacy_decision: Option<LegacyDecision>,
     /// Closing the window keeps the app running in the system tray (default: true).
     pub close_to_tray: Option<bool>,
+    /// Check for updates automatically at start-up (default: false; updates are opt-in).
+    pub auto_check_updates: Option<bool>,
 }
 
 impl DesktopSettings {
+    /// Missing file -> defaults. An unreadable or corrupt file is set aside as
+    /// `desktop.json.corrupt-<time>` (never silently overwritten) and defaults are used.
     pub fn load(dirs: &DataDirs) -> Self {
-        fs::read_to_string(dirs.settings_path())
-            .ok()
-            .and_then(|s| serde_json::from_str(&s).ok())
-            .unwrap_or_default()
+        let path = dirs.settings_path();
+        let Ok(text) = fs::read_to_string(&path) else { return Self::default() };
+        match serde_json::from_str(&text) {
+            Ok(settings) => settings,
+            Err(e) => {
+                let ts = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+                let aside = path.with_extension(format!("json.corrupt-{ts}"));
+                let _ = fs::rename(&path, &aside);
+                dirs.log(&format!("desktop.json is not valid ({e}); moved to {} and using defaults", aside.display()));
+                Self::default()
+            }
+        }
     }
 
     pub fn save(&self, dirs: &DataDirs) -> Result<(), String> {
@@ -100,6 +112,10 @@ impl DesktopSettings {
 
     pub fn close_to_tray(&self) -> bool {
         self.close_to_tray.unwrap_or(true)
+    }
+
+    pub fn auto_check_updates(&self) -> bool {
+        self.auto_check_updates.unwrap_or(false)
     }
 
     pub fn models_dir(&self, dirs: &DataDirs) -> PathBuf {
@@ -266,6 +282,7 @@ mod tests {
             models_dir: Some(PathBuf::from(r"S:\Mustang AI\models")),
             legacy_decision: Some(LegacyDecision::Imported),
             close_to_tray: Some(false),
+            auto_check_updates: None,
         };
         let text = serde_json::to_string(&s).unwrap();
         assert!(text.contains("\"imported\""));
@@ -280,5 +297,21 @@ mod tests {
         let s: DesktopSettings = serde_json::from_str("{}").unwrap();
         assert!(s.models_dir.is_none() && s.legacy_decision.is_none());
         assert!(s.close_to_tray(), "close-to-tray defaults to on");
+        assert!(!s.auto_check_updates(), "update checks are opt-in");
+    }
+
+    #[test]
+    fn corrupt_settings_are_set_aside_not_overwritten() {
+        let root = std::env::temp_dir().join(format!("mustang-settings-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        let dirs = DataDirs { data: root.join("data"), logs: root.join("logs"), default_models: root.join("models"), root: root.clone() };
+        fs::create_dir_all(&dirs.logs).unwrap();
+        fs::write(dirs.settings_path(), r#"{"models_dir": "S:ad\escape"#).unwrap();
+        let s = DesktopSettings::load(&dirs);
+        assert!(s.models_dir.is_none());
+        assert!(!dirs.settings_path().exists(), "corrupt file must be moved aside");
+        let aside: Vec<_> = fs::read_dir(&root).unwrap().filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with("desktop.json.corrupt-")).collect();
+        assert_eq!(aside.len(), 1);
+        let _ = fs::remove_dir_all(&root);
     }
 }

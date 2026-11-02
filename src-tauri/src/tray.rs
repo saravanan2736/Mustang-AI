@@ -7,6 +7,7 @@
 //! A monitor thread keeps the status line current and, while a model is generating or a
 //! download is running, asks Windows not to sleep (SetThreadExecutionState).
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -101,10 +102,13 @@ struct Snapshot {
     text: String,
     can_unload: bool,
     busy: bool,
+    ready: bool,
+    /// download id -> (status, filename)
+    downloads: HashMap<String, (String, String)>,
 }
 
 fn snapshot(manager: &BackendManager) -> Snapshot {
-    let idle = |text: &str| Snapshot { text: text.into(), can_unload: false, busy: false };
+    let idle = |text: &str| Snapshot { text: text.into(), can_unload: false, busy: false, ready: false, downloads: HashMap::new() };
     match manager.state() {
         BackendState::Ready { .. } => {}
         BackendState::Starting { .. } | BackendState::Restarting { .. } => return idle("Engine: starting…"),
@@ -131,13 +135,26 @@ fn snapshot(manager: &BackendManager) -> Snapshot {
     if downloading > 0 {
         text.push_str(&format!(" · {downloading} download{}", if downloading == 1 { "" } else { "s" }));
     }
-    Snapshot { text, can_unload: matches!(state, "READY" | "GENERATING"), busy: state == "GENERATING" || downloading > 0 }
+    let downloads = downloads
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|d| {
+                    Some((d["id"].as_str()?.to_string(), (d["status"].as_str()?.to_string(), d["filename"].as_str().unwrap_or("").to_string())))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Snapshot { text, can_unload: matches!(state, "READY" | "GENERATING"), busy: state == "GENERATING" || downloading > 0, ready: true, downloads }
 }
 
 fn monitor(app: AppHandle, tray: tauri::tray::TrayIcon, status: MenuItem<tauri::Wry>, unload: MenuItem<tauri::Wry>) {
     let mut last_text = String::new();
     let mut awake = false;
     let mut announced = false;
+    let mut became_ready = false;
+    let mut known: HashMap<String, (String, String)> = HashMap::new();
     loop {
         thread::sleep(MONITOR_INTERVAL);
         let Some(manager) = app.try_state::<Arc<BackendManager>>() else { continue };
@@ -156,12 +173,38 @@ fn monitor(app: AppHandle, tray: tauri::tray::TrayIcon, status: MenuItem<tauri::
             last_text = snap.text.clone();
         }
         let _ = unload.set_enabled(snap.can_unload);
+        if snap.ready && !became_ready {
+            became_ready = true;
+            crate::updater::spawn_auto_check(app.clone());
+            if std::env::var("MUSTANG_DESKTOP_TEST_NOTIFY").as_deref() == Ok("1") {
+                notify(&app, "Mustang AI", "Test notification from the desktop shell.");
+            }
+        }
+        for (id, (status, file)) in &snap.downloads {
+            let previous = known.get(id).map(|(s, _)| s.as_str());
+            let was_active = matches!(previous, Some("QUEUED") | Some("DOWNLOADING") | Some("VERIFYING") | Some("PAUSED"));
+            if was_active && status == "COMPLETED" {
+                notify(&app, "Download complete", &format!("{file} is ready to load."));
+            } else if was_active && status == "FAILED" {
+                notify(&app, "Download failed", &format!("{file} could not be downloaded. Open the Download Queue to retry."));
+            }
+        }
+        if snap.ready {
+            known = snap.downloads;
+        }
         if snap.busy != awake {
             keep_awake(snap.busy);
             awake = snap.busy;
             log(&app, &format!("keep-awake {}", if awake { "on (generating or downloading)" } else { "off" }));
         }
     }
+}
+
+/// Windows toast (works once the installer has registered the app's AppUserModelID).
+fn notify(app: &AppHandle, title: &str, body: &str) {
+    use tauri_plugin_notification::NotificationExt;
+    let result = app.notification().builder().title(title).body(body).show();
+    log(app, &format!("notification '{title}': {}", if result.is_ok() { "shown" } else { "failed" }));
 }
 
 /// Per-thread request to keep the system (not the display) awake; must be called from the

@@ -197,6 +197,13 @@ impl BackendManager {
         self.set_state(BackendState::Stopped);
     }
 
+    /// Stop the backend gracefully for file maintenance (backup restore, update install)
+    /// without entering app shutdown; `restart()` brings it back.
+    pub fn stop_for_maintenance(&self) {
+        self.set_state(BackendState::Starting { detail: "Applying maintenance".into() });
+        self.stop_process(true);
+    }
+
     /// Port and session token of the running backend, while it is ready.
     pub fn api(&self) -> Option<(u16, String)> {
         let inner = self.inner.lock().unwrap();
@@ -381,8 +388,15 @@ impl BackendManager {
                     return;
                 }
                 if let Some(exit) = inner.process.as_ref().and_then(|p| p.exit_info()) {
+                    let detail = inner
+                        .process
+                        .as_ref()
+                        .and_then(|p| last_error_line(&p.logs().into_iter().map(|l| l.line).collect::<Vec<_>>()))
+                        .map(|e| format!("
+{e}"))
+                        .unwrap_or_default();
                     drop(inner);
-                    return self.fail(format!("The backend exited during start-up (exit code {}).", exit_code_text(exit.code)));
+                    return self.fail(format!("The backend exited during start-up (exit code {}).{detail}", exit_code_text(exit.code)));
                 }
             }
             if matches!(http(port, "GET", "/health", None), Ok(200)) {
@@ -519,6 +533,23 @@ impl BackendManager {
     }
 }
 
+/// The last Python exception line (`SomeError: message`) in captured output, if any.
+fn last_error_line(lines: &[String]) -> Option<String> {
+    lines
+        .iter()
+        .rev()
+        .map(|l| l.trim())
+        .find(|l| {
+            let head = l.split(": ").next().unwrap_or("");
+            !head.is_empty() && !head.contains(' ') && (head.ends_with("Error") || head.ends_with("Exception")) && l.len() > head.len() + 2
+        })
+        .map(|l| {
+            // "app.db.database.NewerSchemaError: msg" -> "NewerSchemaError: msg"
+            let (head, rest) = l.split_once(": ").unwrap_or((l, ""));
+            format!("{}: {rest}", head.rsplit('.').next().unwrap_or(head))
+        })
+}
+
 fn exit_code_text(code: Option<i32>) -> String {
     code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".into())
 }
@@ -591,6 +622,22 @@ mod tests {
         assert_eq!(a.len(), 64);
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn last_error_line_finds_the_exception_message() {
+        let lines: Vec<String> = [
+            "Traceback (most recent call last):",
+            "  File \"x.py\", line 1, in <module>",
+            "app.db.database.NewerSchemaError: Database C:/d/mustang.db uses schema v2, but this build supports up to v1. It was created by a newer Mustang AI; refusing to modify it.",
+            "ERROR:    Application startup failed. Exiting.",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        let line = last_error_line(&lines).unwrap();
+        assert!(line.starts_with("NewerSchemaError: Database"), "{line}");
+        assert!(last_error_line(&["all good".to_string()]).is_none());
     }
 
     #[test]

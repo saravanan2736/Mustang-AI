@@ -22,6 +22,9 @@ tauri-plugin-dialog = "2"
 tauri-plugin-window-state = "2"
 # Opening allow-listed https links in the default browser (Rust-side only, via open_external).
 tauri-plugin-opener = "2"
+# Opt-in signed updates and download notifications (Rust-side only; no JS permissions).
+tauri-plugin-updater = "2"
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 mustang-supervisor = { path = "../crates/mustang-supervisor" }

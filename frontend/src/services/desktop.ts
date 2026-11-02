@@ -40,3 +40,39 @@ export function installExternalLinkHandler(): void {
     true
   );
 }
+
+// --- Backups ---
+
+export interface BackupEntry {
+  name: string;
+  kind: "pre-update" | "before-restore" | "schema-migration" | "other";
+  size: number;
+  /** Seconds since the Unix epoch. */
+  modified: number;
+}
+
+export const listBackups = () => invoke<BackupEntry[]>("list_backups");
+/** Stops the engine, keeps the current database as a backup, restores, restarts. */
+export const restoreBackup = (name: string) => invoke<void>("restore_backup", { name });
+
+// --- Updates (opt-in; only in builds configured with an update endpoint) ---
+
+export interface UpdateSettings {
+  configured: boolean;
+  auto_check: boolean;
+  current_version: string;
+}
+
+export interface UpdateInfo {
+  available: boolean;
+  current_version: string;
+  version: string | null;
+  notes: string | null;
+  date: string | null;
+}
+
+export const getUpdateSettings = () => invoke<UpdateSettings>("update_settings");
+export const setAutoCheckUpdates = (enabled: boolean) => invoke<void>("set_auto_check_updates", { enabled });
+export const checkForUpdate = () => invoke<UpdateInfo>("check_for_update");
+/** Downloads and verifies the update, backs up the database, then installs and relaunches. */
+export const installUpdate = () => invoke<void>("install_update");

@@ -8,7 +8,9 @@ import {
   initBackendConnection,
   retryBackend,
   subscribeBackendStatus,
+  isDesktop,
 } from "../services/connection";
+import { BackupList } from "./BackupsAndUpdates";
 
 /**
  * Renders the app once the backend address and session token are known.
@@ -20,6 +22,7 @@ export const BackendGate: React.FC<{ children: React.ReactNode }> = ({ children 
   const [hasBeenReady, setHasBeenReady] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [gpuNoticeDismissed, setGpuNoticeDismissed] = useState(false);
+  const [showBackups, setShowBackups] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeBackendStatus((s) => {
@@ -69,6 +72,25 @@ export const BackendGate: React.FC<{ children: React.ReactNode }> = ({ children 
             </pre>
           )}
           {logDir && <p className="text-xs text-slate-500 font-mono break-all">Logs: {logDir}</p>}
+          {isDesktop && (() => {
+            const newerData = status.log_tail.some((l) => l.includes("newer Mustang AI"));
+            return (
+              <div className="space-y-2">
+                {newerData && (
+                  <p className="text-xs text-amber-200">
+                    Your data was saved by a newer version of Mustang AI. Install that version again, or restore a backup made before it.
+                  </p>
+                )}
+                {showBackups || newerData ? (
+                  <BackupList compact />
+                ) : (
+                  <button onClick={() => setShowBackups(true)} className="text-xs text-indigo-300 hover:text-indigo-200 underline">
+                    Restore a database backup…
+                  </button>
+                )}
+              </div>
+            );
+          })()}
           <button
             onClick={handleRetry}
             disabled={retrying}

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { FolderOpen, FolderSearch, HardDrive, MonitorDown, RotateCcw, ScrollText } from "lucide-react";
+import { ArchiveRestore, FolderOpen, FolderSearch, HardDrive, MonitorDown, RefreshCw, RotateCcw, ScrollText } from "lucide-react";
+import { BackupList, UpdatesSection } from "./BackupsAndUpdates";
 import {
   DesktopSettings,
   chooseModelsFolder,
@@ -139,6 +140,22 @@ export const DesktopSettingsPanel: React.FC = () => {
           <ScrollText className="w-3.5 h-3.5" />
           Open logs
         </button>
+      </div>
+
+      <div>
+        <p className="text-xs font-medium text-slate-200 flex items-center gap-1.5 mb-1.5">
+          <RefreshCw className="w-3.5 h-3.5 text-indigo-400" />
+          Updates
+        </p>
+        <UpdatesSection />
+      </div>
+
+      <div>
+        <p className="text-xs font-medium text-slate-200 flex items-center gap-1.5 mb-1.5">
+          <ArchiveRestore className="w-3.5 h-3.5 text-indigo-400" />
+          Database backups
+        </p>
+        <BackupList />
       </div>
 
       {message && message.text && (

@@ -71,7 +71,11 @@ cd "S:\Mustang AI"
 npm run desktop:dev        # native window; backend from source (backend\.venv), UI from Vite on 5173
 npm run desktop:build      # embedded Python runtime + release app: src-tauri\target\release\mustang-desktop.exe
 npm run runtime:test       # backend test suite inside the embedded runtime
+npm run release:build      # Windows installer: buildelease\<version>\Mustang AI_<version>_x64-setup.exe
+npm run version:set -- 0.2.0   # bump the version in every file that records it
 ```
+
+Signing and opt-in updates are configured through environment variables; see `scripts/build_release.py` and `docs\milestone-4\M4_PHASEF_IMPLEMENTATION_REPORT.md`.
 
 - User data lives in `%LOCALAPPDATA%\MustangAI\` (`data\mustang.db`, `logs\`, `desktop.json`). On first launch the app offers to import an existing `backend\run\mustang.db` (copied read-only) and to keep using the existing `models\` folder in place.
 - The shell starts the backend on free loopback ports with a per-launch session token and stops it gracefully on exit.

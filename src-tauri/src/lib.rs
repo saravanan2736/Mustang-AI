@@ -11,6 +11,8 @@ use tauri::Manager;
 #[cfg(not(feature = "probe"))]
 mod backend;
 #[cfg(not(feature = "probe"))]
+mod backups;
+#[cfg(not(feature = "probe"))]
 mod desktop;
 #[cfg(not(feature = "probe"))]
 mod paths;
@@ -23,12 +25,19 @@ mod runtime_info;
 mod session;
 #[cfg(not(feature = "probe"))]
 mod tray;
+#[cfg(not(feature = "probe"))]
+mod updater;
 
 /// Grace period for the backend at Windows logoff/shutdown (Windows shows the block reason).
 #[cfg(not(feature = "probe"))]
 const SESSION_END_GRACE: std::time::Duration = std::time::Duration::from_secs(8);
 
 pub fn run() {
+    let context = tauri::generate_context!();
+    // The updater exists only in builds configured with an endpoint and public key.
+    #[cfg(not(feature = "probe"))]
+    let updater_configured = context.config().plugins.0.contains_key("updater");
+
     // A second launch never starts another instance (it would compete for VRAM and the
     // database); its arguments are forwarded to the running one.
     let builder = tauri::Builder::default()
@@ -53,6 +62,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(
             // The main webview only ever shows the app. Allow-listed https links open in the
             // default browser instead; everything else is refused.
@@ -70,7 +80,8 @@ pub fn run() {
                 })
                 .build(),
         )
-        .setup(|app| {
+        .setup(move |app| {
+            app.manage(updater::UpdaterConfigured(updater_configured));
             if std::env::args().any(|a| a == "--quit") {
                 std::process::exit(0); // no running instance to quit
             }
@@ -119,7 +130,16 @@ pub fn run() {
             desktop::reset_models_folder,
             desktop::open_folder,
             desktop::open_external,
+            backups::list_backups,
+            backups::restore_backup,
+            updater::update_settings,
+            updater::set_auto_check_updates,
+            updater::check_for_update,
+            updater::install_update,
         ]);
+
+    #[cfg(not(feature = "probe"))]
+    let builder = if updater_configured { builder.plugin(tauri_plugin_updater::Builder::new().build()) } else { builder };
 
     #[cfg(feature = "probe")]
     let builder = builder
@@ -136,7 +156,7 @@ pub fn run() {
         ]);
 
     let app = builder
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building Mustang AI desktop shell");
 
     app.run(|_handle, _event| {

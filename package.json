@@ -10,7 +10,9 @@
     "runtime:test": "backend\\.venv\\Scripts\\python.exe scripts/test_desktop_runtime.py",
     "desktop:build": "npm run runtime:build && tauri build --no-bundle --config src-tauri/tauri.release.conf.json",
     "probe:dev": "tauri dev --features probe --config src-tauri/tauri.probe.conf.json",
-    "probe:build": "tauri build --no-bundle --features probe --config src-tauri/tauri.probe.conf.json"
+    "probe:build": "tauri build --no-bundle --features probe --config src-tauri/tauri.probe.conf.json",
+    "release:build": "npm run runtime:build && tauri build --bundles nsis --config src-tauri/tauri.release.conf.json",
+    "version:set": "backend\\.venv\\Scripts\\python.exe scripts/set_version.py"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.12.4"
