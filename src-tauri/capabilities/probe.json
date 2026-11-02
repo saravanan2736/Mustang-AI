@@ -1,0 +1,15 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "probe",
+  "description": "Phase B connectivity probe commands. Enabled only by tauri.probe.conf.json together with the `probe` Cargo feature.",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    "allow-probe-info",
+    "allow-probe-restart-backend",
+    "allow-probe-stop-backend",
+    "allow-probe-raw-host-check",
+    "allow-probe-backend-logs",
+    "allow-probe-report"
+  ]
+}

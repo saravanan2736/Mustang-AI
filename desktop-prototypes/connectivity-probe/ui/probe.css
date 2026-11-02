@@ -1,0 +1,17 @@
+:root { color-scheme: dark; }
+body { margin: 0; padding: 24px 28px; background: #07090E; color: #E2E8F0; font: 14px/1.5 "Segoe UI", system-ui, sans-serif; }
+h1 { margin: 0; font-size: 20px; color: #818CF8; }
+h2 { font-size: 14px; text-transform: uppercase; letter-spacing: .06em; color: #94A3B8; margin: 24px 0 8px; }
+.sub { margin: 4px 0 12px; color: #64748B; }
+.summary { display: inline-block; padding: 6px 12px; border-radius: 8px; background: #141A29; border: 1px solid #2C374E; font-weight: 600; }
+.summary.pass { color: #4ADE80; border-color: #166534; }
+.summary.fail { color: #F87171; border-color: #7F1D1D; }
+pre { background: #0F131F; border: 1px solid #1E2638; border-radius: 8px; padding: 12px; overflow-x: auto; font: 12px/1.45 Consolas, monospace; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #1E2638; vertical-align: top; }
+th { color: #94A3B8; font-weight: 600; }
+td.r { font-weight: 700; white-space: nowrap; }
+td.r.PASS { color: #4ADE80; }
+td.r.FAIL { color: #F87171; }
+td.r.INFO { color: #818CF8; }
+td.d { font-family: Consolas, monospace; font-size: 12px; color: #CBD5E1; word-break: break-word; }

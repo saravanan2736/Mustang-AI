@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mustang AI — Connectivity Probe</title>
+    <link rel="stylesheet" href="probe.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Mustang AI · Phase B connectivity probe</h1>
+      <p class="sub">TEST-ONLY. WebView2 → 127.0.0.1 mock backend. No production credentials.</p>
+      <div id="summary" class="summary">running…</div>
+    </header>
+    <section>
+      <h2>Environment</h2>
+      <pre id="env"></pre>
+    </section>
+    <section>
+      <h2>Results</h2>
+      <table>
+        <thead><tr><th>#</th><th>Test</th><th>Result</th><th>Detail</th></tr></thead>
+        <tbody id="results"></tbody>
+      </table>
+    </section>
+    <script src="probe.js"></script>
+  </body>
+</html>

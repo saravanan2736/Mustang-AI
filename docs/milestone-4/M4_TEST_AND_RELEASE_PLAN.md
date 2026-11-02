@@ -18,7 +18,7 @@ Phase A deliverable.
 
 | Suite | Existing / new | Runs in |
 |---|---|---|
-| Backend pytest (120 tests, MockEngine) | existing; isolated to temp dirs in Phase C | every change |
+| Backend pytest (118 tests, MockEngine) | existing; isolated to temp dirs in Phase C | every change |
 | Backend pytest `-m gpu` (live inference, switching, context, lifecycle) | existing | Phase D+, E1 |
 | Route-auth coverage: every route except `/health` returns 401 without token | new (C) | every change |
 | Desktop-mode config: env paths honoured, bootstrap disabled, origins | new (C) | every change |

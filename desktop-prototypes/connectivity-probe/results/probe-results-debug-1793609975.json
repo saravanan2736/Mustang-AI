@@ -1,0 +1,78 @@
+{
+  "fatal": "TypeError: Failed to fetch",
+  "results": [
+    {
+      "detail": {
+        "origin": "http://127.0.0.1:1430",
+        "secureContext": true
+      },
+      "name": "Tauri WebView2 origin",
+      "status": "INFO"
+    },
+    {
+      "detail": {
+        "attempts": 77,
+        "firstError": "TypeError: Failed to fetch",
+        "ms": 20098,
+        "ready": false
+      },
+      "name": "Backend unavailable at startup → retry until ready",
+      "status": "FAIL"
+    },
+    {
+      "detail": {
+        "error": "TypeError: Failed to fetch",
+        "ms": 2,
+        "ok": false,
+        "timedOut": false
+      },
+      "name": "HTTP GET (JSON, token header, preflighted)",
+      "status": "FAIL"
+    },
+    {
+      "detail": {
+        "error": "TypeError: Failed to fetch",
+        "ms": 2,
+        "ok": false,
+        "timedOut": false
+      },
+      "name": "HTTP GET simple request (no preflight)",
+      "status": "FAIL"
+    },
+    {
+      "detail": {
+        "error": "TypeError: Failed to fetch",
+        "ms": 3,
+        "ok": false,
+        "timedOut": false
+      },
+      "name": "HTTP POST JSON request/response",
+      "status": "FAIL"
+    },
+    {
+      "detail": {
+        "error": "TypeError: Failed to fetch",
+        "ms": 2,
+        "ok": false,
+        "timedOut": false
+      },
+      "name": "Missing token → 401 visible to app",
+      "status": "FAIL"
+    },
+    {
+      "detail": {
+        "error": "TypeError: Failed to fetch",
+        "ms": 1,
+        "ok": false,
+        "timedOut": false
+      },
+      "name": "CORS preflight (OPTIONS) observed by server",
+      "status": "FAIL"
+    },
+    {
+      "detail": "TypeError: Failed to fetch\n    at readStream (http://127.0.0.1:1430/probe.js:63:21)\n    at run (http://127.0.0.1:1430/probe.js:176:21)",
+      "name": "probe runner",
+      "status": "FAIL"
+    }
+  ]
+}

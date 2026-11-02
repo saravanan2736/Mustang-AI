@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-probe-raw-host-check"
+description = "Enables the probe_raw_host_check command without any pre-configured scope."
+commands.allow = ["probe_raw_host_check"]
+
+[[permission]]
+identifier = "deny-probe-raw-host-check"
+description = "Denies the probe_raw_host_check command without any pre-configured scope."
+commands.deny = ["probe_raw_host_check"]

@@ -50,7 +50,7 @@ Every feature is preserved through the same code path. The changes are limited t
 - **Files:** new `scripts/build_python_runtime.ps1`, `backend/requirements.lock`, `backend/mustang_launcher.py`, `src-tauri/src/{backend.rs,job.rs,paths.rs,migration.rs}`; changed `backend/app/core/security.py`, `app/api/auth.py`, `app/api/system.py`, `app/main.py`, `app/db/database.py`, `app/config.py`, `backend/tests/conftest.py`, new auth/shutdown tests; `frontend/src/services/api.ts` (token on every call), `DownloadQueue.tsx` (fetch stream).
 - **Dependencies:** Phase B.
 - **Risks:** R3 (embedded Python import gaps), R5 (orphans), R8 (data migration), R10 (auth tightening breaks a call).
-- **Testing:** the full existing pytest suite (120 tests) passes against both venv and embedded Python; new tests check that every route except `/health` returns 401 without a token. Kill-tests: kill `Mustang AI.exe` via Task Manager → no `python.exe`/`llama-server.exe` survives. Port-collision test: start with 18000 occupied → app still starts.
+- **Testing:** the full existing pytest suite (118 tests) passes against both venv and embedded Python; new tests check that every route except `/health` returns 401 without a token. Kill-tests: kill `Mustang AI.exe` via Task Manager → no `python.exe`/`llama-server.exe` survives. Port-collision test: start with 18000 occupied → app still starts.
 - **Done when:** Double-clicking `tauri build` output starts everything with no console windows; quit leaves no processes; data lives in `%LOCALAPPDATA%\MustangAI`; the legacy DB is imported intact.
 - **Effort:** 7–10 engineer-days.
 

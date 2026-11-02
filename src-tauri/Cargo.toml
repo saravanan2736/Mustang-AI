@@ -1,0 +1,36 @@
+[package]
+name = "mustang-desktop"
+version = "0.1.0"
+description = "Mustang AI native Windows desktop shell (Tauri 2)"
+edition = "2021"
+publish = false
+
+[lib]
+name = "mustang_desktop_lib"
+# Desktop-only: the template's "staticlib"/"cdylib" exist for mobile targets, and a
+# cdylib exceeds GNU ld's 65,535 export-ordinal limit on x86_64-pc-windows-gnu.
+crate-type = ["rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-single-instance = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Phase B connectivity probe only (feature "probe"); never part of the default build.
+mustang-supervisor = { path = "../desktop-prototypes/process-supervisor", optional = true }
+getrandom = { version = "0.3", optional = true }
+
+[features]
+default = []
+probe = ["dep:mustang-supervisor", "dep:getrandom"]
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

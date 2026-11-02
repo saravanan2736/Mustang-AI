@@ -25,7 +25,7 @@ S:\Mustang AI\
 │   ├── runtime\bin\              llama.cpp b12000 CUDA 13.4 build + CUDA DLLs (732 MB)
 │   ├── runtime\downloads\        cached release zips (562 MB)
 │   ├── runtime\setup_runtime.py  pinned, SHA-256-verified runtime installer
-│   └── tests\                    120 pytest tests (MockEngine by default, gpu marker)
+│   └── tests\                    118 pytest tests (MockEngine by default, gpu marker)
 ├── frontend\                     React 18.3, TypeScript 5.7, Vite 6, Tailwind 3.4
 │   ├── src\services\api.ts       hard-coded BACKEND_URL = http://127.0.0.1:18000
 │   ├── src\hooks\useChatStream.ts fetch + ReadableStream SSE parser, AbortController

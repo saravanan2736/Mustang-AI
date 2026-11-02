@@ -1,0 +1,16 @@
+{
+  "name": "mustang-ai-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Desktop tooling for Mustang AI (Tauri 2 shell). The web UI lives in ./frontend.",
+  "scripts": {
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build --no-bundle",
+    "probe:dev": "tauri dev --features probe --config src-tauri/tauri.probe.conf.json",
+    "probe:build": "tauri build --no-bundle --features probe --config src-tauri/tauri.probe.conf.json"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.4"
+  }
+}

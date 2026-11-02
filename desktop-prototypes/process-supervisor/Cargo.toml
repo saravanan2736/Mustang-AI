@@ -1,0 +1,22 @@
+[package]
+name = "mustang-supervisor"
+version = "0.1.0"
+edition = "2021"
+description = "Phase B prototype: Windows Job Object based child-process supervision for Mustang AI"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "supervisor-poc"
+path = "src/bin/supervisor_poc.rs"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+] }

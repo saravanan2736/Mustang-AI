@@ -1,0 +1,224 @@
+{
+  "environment": {
+    "allowed_origins": "http://127.0.0.1:1430",
+    "backend_base_url": "http://127.0.0.1:49374",
+    "is_secure_context": true,
+    "lna_permission_local_network": "prompt",
+    "lna_permission_local_network_access": "prompt",
+    "lna_permission_loopback_network": "prompt",
+    "location_href": "http://127.0.0.1:1430/",
+    "location_origin": "http://127.0.0.1:1430",
+    "runtime": {
+      "app_name": "Mustang AI",
+      "app_version": "0.1.0",
+      "arch": "x86_64",
+      "backend": {
+        "base_url": "http://127.0.0.1:49374",
+        "managed": true,
+        "pid": 31432,
+        "ready": false
+      },
+      "build_profile": "debug",
+      "os": "windows",
+      "probe_build": true,
+      "tauri_version": "2.12.5",
+      "webview_version": "156.0.4314.58"
+    },
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36 Edg/156.0.0.0"
+  },
+  "failed": 0,
+  "generated_at": "2026-11-02T09:00:09.279Z",
+  "passed": 18,
+  "results": [
+    {
+      "detail": {
+        "origin": "http://127.0.0.1:1430",
+        "secureContext": true
+      },
+      "name": "Tauri WebView2 origin",
+      "status": "INFO"
+    },
+    {
+      "detail": {
+        "attempts": 5,
+        "bootId": "166134978c28",
+        "firstError": "TypeError: Failed to fetch",
+        "ms": 1070,
+        "ready": true
+      },
+      "name": "Backend unavailable at startup → retry until ready",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "ms": 4,
+        "server_saw_host": "127.0.0.1:49374",
+        "server_saw_origin": "http://127.0.0.1:1430"
+      },
+      "name": "HTTP GET (JSON, token header, preflighted)",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "page": "http://127.0.0.1:1430",
+        "server": "http://127.0.0.1:1430"
+      },
+      "name": "Server-observed Origin matches location.origin",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "ms": 3,
+        "status": 200
+      },
+      "name": "HTTP GET simple request (no preflight)",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "echoed_equal": true,
+        "ms": 4
+      },
+      "name": "HTTP POST JSON request/response",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "status": 401
+      },
+      "name": "Missing token → 401 visible to app",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "options_requests": 3,
+        "origins": {
+          "http://127.0.0.1:1430": 9
+        }
+      },
+      "name": "CORS preflight (OPTIONS) observed by server",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "done": true,
+        "error": null,
+        "events": 20,
+        "first_to_last_ms": 2041,
+        "max_gap_ms": 119,
+        "min_gap_ms": 87
+      },
+      "name": "fetch streaming (SSE frames) arrives incrementally",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "done": true,
+        "events": 5
+      },
+      "name": "EventSource cross-origin stream",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "client_error": "AbortError: signal is aborted without reason",
+        "events_before_abort": 5,
+        "server_aborted_after": 1,
+        "server_aborted_before": 0
+      },
+      "name": "Client abort mid-stream detected server-side",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "error": "TypeError: Failed to fetch",
+        "ms": 1,
+        "ok": false,
+        "timedOut": false
+      },
+      "name": "Connection refused (closed port) fails fast",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "host": "localhost:49374",
+        "ms": 3
+      },
+      "name": "http://localhost:<port> also reachable",
+      "status": "INFO"
+    },
+    {
+      "detail": {
+        "127.0.0.1:port": 200,
+        "attacker.test:port": 403,
+        "evil.example": 403
+      },
+      "name": "Host-header validation (DNS-rebinding guard)",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "fetch": {
+          "error": "TypeError: Failed to fetch",
+          "ms": 2,
+          "ok": false,
+          "timedOut": false
+        },
+        "stop": "Some(Graceful)"
+      },
+      "name": "Backend down → fetch fails fast",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "attempts": 7,
+        "bootId": "79eb4247a600",
+        "firstError": "TypeError: Failed to fetch",
+        "launches": 2,
+        "ms": 1580,
+        "ready": true
+      },
+      "name": "Restart (same port) → reconnect",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "new": "http://127.0.0.1:54580",
+        "old": "http://127.0.0.1:49374",
+        "old_port_now": "TypeError: Failed to fetch",
+        "ready_ms": 543
+      },
+      "name": "Restart (new port) → reconnect via shell-provided URL",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "client_error": "TypeError: network error",
+        "done_marker": false,
+        "events": 5,
+        "hung": false,
+        "ms": 441
+      },
+      "name": "Backend crash mid-stream → client detects termination",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "preflighted_get": "TypeError: Failed to fetch",
+        "server_reachable_no_cors": true,
+        "server_received_simple_get": true,
+        "simple_get": "TypeError: Failed to fetch"
+      },
+      "name": "CORS enforced when origin not allow-listed",
+      "status": "PASS"
+    },
+    {
+      "detail": {
+        "leaked": false,
+        "lines": 3
+      },
+      "name": "Backend logs captured; token absent",
+      "status": "PASS"
+    }
+  ]
+}

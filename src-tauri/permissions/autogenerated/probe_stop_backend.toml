@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-probe-stop-backend"
+description = "Enables the probe_stop_backend command without any pre-configured scope."
+commands.allow = ["probe_stop_backend"]
+
+[[permission]]
+identifier = "deny-probe-stop-backend"
+description = "Denies the probe_stop_backend command without any pre-configured scope."
+commands.deny = ["probe_stop_backend"]
