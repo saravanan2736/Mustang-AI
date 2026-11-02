@@ -8,7 +8,7 @@ Environment: E1 (i7-13620H, RTX 5050 Laptop 8 GB, driver 617.42, 24 GB RAM, Wind
 
 | Gate | Status | Evidence |
 |---|---|---|
-| G1 Functional | **Pass on E1** after two fixes (§3) | Security, download/resume, chat, load/switch, tray, update, uninstall scenarios (this report and Phase B–F reports) |
+| G1 Functional | **Pass on E1** after two fixes (§3) and the soak fix (§7.1) | Security, download/resume, chat, load/switch, tray, update, uninstall scenarios (this report and Phase B–F reports) |
 | G2 Automated | **Pass** | §6 |
 | G3 Data safety | **Pass on E1** (scenarios 2–6 in Phase F; 1 on E1 only) | Phase F test report §2–6; legacy import in Phase E |
 | G4 Security | **Pass** | §2 |
@@ -16,7 +16,7 @@ Environment: E1 (i7-13620H, RTX 5050 Laptop 8 GB, driver 617.42, 24 GB RAM, Wind
 | G6 Clean machine | **Not run: needs E2/E3** | §8 |
 | G7 Signing | **Not met: no certificate**. Signing pipeline ready (`scripts/sign.ps1`, `MUSTANG_SIGN_CERT_THUMBPRINT`); updater signature verification tested in Phase F with a test key | §8 |
 
-The release candidate is functionally ready on E1, with one **open finding that should block sign-off until explained**: the backend's memory steps up once to ~2.1 GB during a stalled cycle in the soak (§7). G6 and G7 need hardware and a certificate that are not available here; see §8 for what to run.
+The release candidate is functionally ready on E1. The soak finding (stalls of 40–100 s and a step of the backend's memory to ~2.1 GB) was traced to piled-up memory-estimate requests, each re-parsing the whole GGUF file, and is **fixed** (§7.1): a 30-min soak on the installed RC ran 1,524 chats with no errors and no stalls. **Still open:** slow native memory growth of the backend in the desktop app, ~1 MB per load/chat cycle (§7.2); harmless in short sessions, but it fails the 4-h soak criterion until fixed. G6 and G7 need hardware and a certificate that are not available here; see §8 for what to run.
 
 ## 2. Security checklist (release build, `src-tauri\target\release`)
 
@@ -99,9 +99,9 @@ Reference model `qwen2.5-0.5b-instruct-q4_k_m.gguf`, `tests/run_stage6_benchmark
 
 | Suite | Result |
 |---|---|
-| Backend pytest, dev venv | **158 passed** (151 + 7 new regression tests), repeated 4×: the only intermittent failure found (1 in ~8 runs of `test_conversation_crud_and_messages`) was the real bug in §3.2, now covered deterministically |
+| Backend pytest, dev venv | **161 passed** (151 + 10 new regression tests), repeated 4×: the only intermittent failure found (1 in ~8 runs of `test_conversation_crud_and_messages`) was the real bug in §3.2, now covered deterministically |
 | Backend pytest `-m gpu` (live CUDA inference, cancel, engine key, concurrency) | **5 passed** |
-| Backend pytest inside the embedded release runtime (`scripts/test_desktop_runtime.py`) | **158 passed** |
+| Backend pytest inside the embedded release runtime (`scripts/test_desktop_runtime.py`) | **161 passed** |
 | Rust unit tests (`src-tauri`, `cargo test --lib`) | **20 passed** |
 | Frontend `tsc --noEmit` | clean |
 | Data guard (model + `backend
@@ -119,7 +119,7 @@ un\mustang.db` SHA-256) | unchanged after every step |
 | WebView2 | 416 → 431 MB (+3.7 %) |
 | Backend handles | 298 → 328 (+10 %), flat over the last 38 cycles (318–340) |
 | Quit afterwards | clean, no leftover processes |
-| **Backend memory** | **open finding, see below** |
+| **Backend memory** | step to ~2.1 GB with stalls: cause found and fixed in §7.1 |
 
 **Open finding: backend working set steps up to ~2.1 GB.** It is not a steady leak: the backend stays between 170 and 650 MB for 14 cycles, then rises once to ~2.06 GB during a cycle that took ~117 s instead of ~9 s, and then stays flat for the remaining 38 cycles (2.03–2.40 GB). Similar ~100 s cycles recur every few minutes (cycles 15, 19, 26, 31, 38, 43, 47, 53). A 3.8-min re-run reproduced it (cycle 13: 121 s, 748 → 2070 MB). In those cycles, single non-streamed `/v1/chat/completions` calls (`max_tokens` 96) took 30 s and 80 s.
 
@@ -148,10 +148,51 @@ The backend log of the slow cycle 15 shows where the time goes: httpx logs an en
 
 **Last run (20:55–20:57), with connection sampling:** a 2.1-min soak on the release build, sampling every 5 s which processes hold connections to the backend port. 15 cycles, 0 errors, **no stall and no step this time**. Every connection belonged to the WebView process (3–6 at a time: UI polling, the download-progress stream, the soak's request). The backend's working set still swung between 290 and 870 MB, against ~100 MB when the same cycle is driven directly. So the stall is **intermittent**: 3 of 4 desktop runs, always after t ≈ 100 s when it happens. The larger memory swings in the app happen even without a stall.
 
-**Before sign-off:**
-1. Enable the uvicorn access log in the release backend and run the app idle-then-busy for 3 minutes: list every request the shell and UI make around t ≈ 100–130 s.
-2. Take `tracemalloc` snapshots (or a `py-spy dump`) of the backend at t ≈ 90 s and t ≈ 140 s.
-3. Run real use for an hour (UI chats, model switches) and watch `python.exe` memory in Task Manager.
+### 7.1 Root cause found and fixed: piled-up memory estimates
+
+A request-tracing ASGI middleware (logging start, end of body and duration of every request; added to a **scratch copy** of the release app only) reproduced the stall in a 4-min soak (cycle 16: ~92 s, 746 → 2347 MB) and showed the cause: the UI's **`GET /api/models/<file>/estimate`** requests. They took ~5 s each at first and then queued up: 5.5 s, 10.9 s, 15.7 s, 17.4 s, 68.6 s, 93.7 s, 96–101 s; up to **7 were in flight at once** (31 in that run).
+
+- **Why so many:** `ModelSelector.tsx` fetches an estimate whenever the selected model, GPU layers or context size changes, and also whenever `isModelLoaded` changes. Every load goes STARTING → READY and every unload flips it back, and the context slider fires on each step. Results the UI has already discarded still run to completion on the backend.
+- **Why each was expensive:** `estimate_model_memory` re-parsed the whole GGUF file with `gguf.GGUFReader` on every call. Measured for the 0.5B model: ~3 s per parse holding **~460 MB of Python heap** (tracemalloc: 459 MB held, 466 MB peak; mostly the tokenizer arrays), plus ~1.5 s for `nvidia-smi`.
+- **Effect:** overlapping parses competed for the GIL, so each got slower. They filled the worker-thread pool that other endpoints also use, so unrelated requests (the soak's chats) waited behind them for 40–100 s. Four or five parses alive at once is ~2 GB, the observed step. Requests still open at quit made uvicorn wait, hence the `Forced` stops. A user would hit this by dragging the context slider or loading and unloading models in quick succession.
+- **Why the direct soaks were clean:** they never called `/estimate`; only the open UI did.
+
+**Fix** (`backend/app/core/memory_estimator.py`): `_read_header()` reads only the architecture and the 8 integer hyperparameters the estimate uses. It caches them per file version (resolved path, size, mtime; at most 64 entries) and serializes parses with a lock, so concurrent requests share one parse instead of each holding their own. The estimate itself is still computed per request, because context, layers and live VRAM change it. Unparseable files are reported as before and not cached. Regression tests: `backend/tests/test_estimate_header_cache.py`:
+- 16 concurrent estimates → 1 parse, with results still varying by context;
+- a changed file is parsed again;
+- a bad file is reported and not cached.
+
+**Verified** on the scratch copy with the fix (same 4-min soak):
+
+| | Before fix | After fix |
+|---|---|---|
+| Cycles in 4.1 min | 19 (one ~92 s) | **34** (7.3 s each, none slow) |
+| Backend working set | 119–746 MB, then 2297–2347 MB | **119 → 157 MB** |
+| `/estimate` latency | up to 101 s, 7 in flight | **mean 0.23 s**; one 5.3 s (the first, uncached parse) |
+| Requests over 3 s | 31 estimates queued | **1** |
+| Backend stop on quit | `Forced` | **`Graceful`** (~1 s) |
+
+**Longer runs with the fix:**
+
+| Run | Cycles / chats / errors | Slow cycles | Backend working set | Quit |
+|---|---|---|---|---|
+| Scratch copy with tracing, 20.1 min | 163 / 978 / 0 | none (1 request > 3 s: the first parse) | 105 → 294 MB | Graceful |
+| Release build (`target\release`), 8 min | 73 / 438 / 0 | none | 141 → 221 MB | Graceful |
+| **Installed RC `2fc4f4d5…`, 30.1 min** | **254 / 1524 / 0** | **none** | 105 → 375 MB | Graceful |
+
+In the installed run, shell handles (366 → 358), backend handles (299 → 299), WebView (+3 %) and engine processes (max 1) are flat.
+
+### 7.2 Open: slow native memory growth in the desktop app (~1 MB per cycle)
+
+With the stalls gone, the backend's memory still rises **linearly by ~1.06 MB per soak cycle** (each cycle: one model load, 6 chats, the UI's polling). The rise shows in private bytes too (6-min run: 572 → 627 MB private, 106 → 160 MB working set), with threads (23–28) and handles (~300) flat. It does not level off within 30 min; at that rate the 4-h scripted soak would end near 2 GB and fail the plan's 10 % criterion. In normal use (a few model loads per session) it amounts to a few MB.
+
+What is known:
+- **Not Python objects:** tracemalloc sees ~14 MB of Python heap while the working set is ~200 MB, so the growth is native (C-level).
+- **Desktop only:** the same cycle driven directly over HTTP shows a sawtooth that falls back (≈ 75 → 110 → 82 MB around cycle 45) for the source backend, the embedded runtime, and the embedded runtime started through the real launcher with its logging (`mustang_launcher.py`, stdin held open). The launcher, logging and runtime are therefore ruled out.
+- **Not a single endpoint:** in isolation (300 calls each) estimate +12 KB per call, context recommendation 0, downloads 0, hardware 0, status 0. 60 engine start/stop cycles in one process: flat after `gc.collect()` (34–37 MB private), handles and object counts flat.
+- **Not per-request HTTP clients:** 1,500 health probes with a new `httpx.AsyncClient` each: +4 MB in total.
+
+Remaining differences between the desktop path and the direct runs: requests come from Chromium (keep-alive connection pool, CORS preflights, the long-lived download-progress SSE stream), and the UI's polling runs concurrently with loads. **Next step:** reproduce with a script that adds those one at a time to the direct soak (an open SSE stream on `/api/downloads/progress`, the UI's poll rates, `Origin` headers), and measure private bytes.
 
 ## 8. Not testable here: for the release owner
 
@@ -171,11 +212,10 @@ The backend log of the slow cycle 15 shows where the time goes: httpx logs an en
 
 | Item | Value |
 |---|---|
-| File | `build\release\0.1.0\Mustang AI_0.1.0_x64-setup.exe` (578,067,706 bytes) |
-| SHA-256 | `89150d1c69db8f09860d91fbc17ead404d7462edabd3020088a94ccb9602b0ee` (also in `SHA256SUMS.txt`) |
-| Contents | all three Phase G fixes; unsigned; updater not configured |
-| Silent install | exit 0 in 48 s; engine integrity verified (31 files, 524 ms) |
-| Installed app | downloaded model listed and loaded by file name, chat, switches, clean quit (§5) |
-| Silent uninstall | exit 0; program removed; data root kept |
+| File | `build\release\0.1.0\Mustang AI_0.1.0_x64-setup.exe` (578,052,030 bytes) |
+| SHA-256 | `2fc4f4d5b5aaa7b5d729538164fb1975ebc71fd2711bd6ef5792fdb35ed71df7` (also in `SHA256SUMS.txt`) |
+| Contents | all four Phase G fixes (§3.1, §3.2, the readiness probe in §4, the estimate cache in §7.1); unsigned; updater not configured |
+| Silent install | exit 0 in 45 s; engine integrity verified (31 files, 498 ms); the estimate fix is present in the installed backend |
+| Installed app | downloaded 1.5B model listed and loaded by file name (2327 ms), chat, switches 2.2–2.4 s, clean quit |
 
-The previous RC (`bc2a4273…2e43e`, built before the fixes) is superseded.
+Superseded: `bc2a4273…2e43e` (before all fixes) and `89150d1c…b0ee` (before the estimate fix).
