@@ -42,8 +42,10 @@ async def get_hardware_metrics():
 )
 async def request_shutdown(request: Request):
     """
-    Graceful shutdown requested by the desktop shell. The lifespan shutdown phase then
-    stops downloads (persisted as PAUSED) and the inference engine before the process exits.
+    Graceful shutdown requested by the desktop shell. Any in-flight generation is cancelled
+    first, so its partial reply is saved and its stream ends instead of uvicorn waiting for it
+    to finish (which could exceed the shell's grace period on long replies). The lifespan
+    shutdown phase then stops downloads (persisted as PAUSED) and the inference engine.
     Only available when the process was started by mustang_launcher.
     """
     trigger = getattr(request.app.state, "request_shutdown", None)
@@ -52,5 +54,8 @@ async def request_shutdown(request: Request):
             status_code=status.HTTP_409_CONFLICT,
             detail="Shutdown is only available when the backend is started by the desktop launcher.",
         )
+    engine = getattr(request.app.state, "engine", None)
+    if engine is not None:
+        await engine.cancel_generation()
     asyncio.get_running_loop().call_later(SHUTDOWN_DELAY_SECONDS, trigger)
     return {"status": "shutting_down"}

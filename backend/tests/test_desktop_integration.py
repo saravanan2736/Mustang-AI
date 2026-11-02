@@ -145,6 +145,24 @@ async def test_shutdown_triggers_launcher_hook(async_client: AsyncClient, monkey
     await asyncio.wait_for(fired.wait(), timeout=2)
 
 
+@pytest.mark.asyncio
+async def test_shutdown_cancels_in_flight_generation_first(async_client: AsyncClient, monkeypatch):
+    """A long reply must not hold up shutdown past the shell's grace period (partial is saved)."""
+    order = []
+
+    class Engine:
+        async def cancel_generation(self):
+            order.append("cancel")
+            return True
+
+    monkeypatch.setattr(app.state, "engine", Engine(), raising=False)
+    monkeypatch.setattr(app.state, "request_shutdown", lambda: order.append("exit"), raising=False)
+    res = await async_client.post("/api/system/shutdown")
+    assert res.status_code == 202
+    await asyncio.sleep(0.4)
+    assert order == ["cancel", "exit"]
+
+
 def _make_legacy_db(path):
     con = sqlite3.connect(path)
     con.executescript(

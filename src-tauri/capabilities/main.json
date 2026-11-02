@@ -1,13 +1,19 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Main window: backend connection info/restart, runtime info, and listening to backend state events. No shell, filesystem, HTTP or process permissions.",
+  "description": "Main window: backend connection info/restart, runtime info, desktop settings (Rust-validated folder picker, own folders, allow-listed external links), backend state events. No shell, filesystem, HTTP or process permissions.",
   "local": true,
   "windows": ["main"],
   "permissions": [
     "allow-desktop-runtime-info",
     "allow-backend-info",
     "allow-backend-restart",
+    "allow-desktop-settings",
+    "allow-set-close-to-tray",
+    "allow-choose-models-folder",
+    "allow-reset-models-folder",
+    "allow-open-folder",
+    "allow-open-external",
     "core:event:allow-listen",
     "core:event:allow-unlisten"
   ]

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { X, Sliders, User, Cpu, Save, RotateCcw, Plus, Trash2 } from "lucide-react";
+import { X, Sliders, User, Cpu, Save, RotateCcw, Plus, Trash2, Monitor } from "lucide-react";
+import { isDesktop } from "../services/connection";
+import { DesktopSettingsPanel } from "./DesktopSettingsPanel";
 import { AppSettings, AssistantProfile } from "../types";
 import {
   fetchSettings,
@@ -20,7 +22,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   onSettingsSaved,
 }) => {
-  const [activeTab, setActiveTab] = useState<"inference" | "profiles" | "hardware">("inference");
+  const [activeTab, setActiveTab] = useState<"inference" | "profiles" | "hardware" | "desktop">("inference");
   const [settings, setSettings] = useState<AppSettings>({
     temperature: 0.7,
     top_p: 0.9,
@@ -170,6 +172,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <Cpu className="w-3.5 h-3.5" />
             <span>Hardware Context</span>
           </button>
+          {isDesktop && (
+            <button
+              onClick={() => setActiveTab("desktop")}
+              className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 transition ${
+                activeTab === "desktop"
+                  ? "border-indigo-500 text-indigo-400"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Monitor className="w-3.5 h-3.5" />
+              <span>Desktop</span>
+            </button>
+          )}
         </div>
 
         {/* Tab Contents */}
@@ -414,6 +429,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
+          {/* --- DESKTOP TAB (desktop app only) --- */}
+          {activeTab === "desktop" && isDesktop && <DesktopSettingsPanel />}
+
           {/* --- HARDWARE TAB --- */}
           {activeTab === "hardware" && (
             <div className="space-y-5">
@@ -455,7 +473,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           )}
         </div>
 
-        {/* Footer Actions */}
+        {/* Footer Actions (generation settings; the Desktop tab applies changes immediately) */}
+        {activeTab !== "desktop" && (
         <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.08] bg-[#0D1220]">
           <button
             onClick={handleResetDefaults}
@@ -479,6 +498,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           </div>
         </div>
+        )}
       </div>
     </div>
   );

@@ -14,15 +14,29 @@ crate-type = ["rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 # Rust-side native message boxes only (first-run import prompt); no JS permissions granted.
 tauri-plugin-dialog = "2"
+# Window size/position persistence (Rust-side only).
+tauri-plugin-window-state = "2"
+# Opening allow-listed https links in the default browser (Rust-side only, via open_external).
+tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 mustang-supervisor = { path = "../crates/mustang-supervisor" }
 getrandom = "0.3"
 sha2 = "0.10"
+
+[target.'cfg(windows)'.dependencies]
+# Session-end (logoff/shutdown) handling and keep-awake while generating or downloading.
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_System_Power",
+    "Win32_System_Shutdown",
+] }
 
 [features]
 default = []

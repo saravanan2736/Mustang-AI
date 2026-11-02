@@ -78,6 +78,8 @@ pub enum LegacyDecision {
 pub struct DesktopSettings {
     pub models_dir: Option<PathBuf>,
     pub legacy_decision: Option<LegacyDecision>,
+    /// Closing the window keeps the app running in the system tray (default: true).
+    pub close_to_tray: Option<bool>,
 }
 
 impl DesktopSettings {
@@ -94,6 +96,10 @@ impl DesktopSettings {
         let text = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
         fs::write(&tmp, text).map_err(|e| e.to_string())?;
         fs::rename(&tmp, &path).map_err(|e| e.to_string())
+    }
+
+    pub fn close_to_tray(&self) -> bool {
+        self.close_to_tray.unwrap_or(true)
     }
 
     pub fn models_dir(&self, dirs: &DataDirs) -> PathBuf {
@@ -259,17 +265,20 @@ mod tests {
         let s = DesktopSettings {
             models_dir: Some(PathBuf::from(r"S:\Mustang AI\models")),
             legacy_decision: Some(LegacyDecision::Imported),
+            close_to_tray: Some(false),
         };
         let text = serde_json::to_string(&s).unwrap();
         assert!(text.contains("\"imported\""));
         let back: DesktopSettings = serde_json::from_str(&text).unwrap();
         assert_eq!(back.models_dir, s.models_dir);
         assert_eq!(back.legacy_decision, Some(LegacyDecision::Imported));
+        assert!(!back.close_to_tray());
     }
 
     #[test]
     fn missing_settings_fields_default() {
         let s: DesktopSettings = serde_json::from_str("{}").unwrap();
         assert!(s.models_dir.is_none() && s.legacy_decision.is_none());
+        assert!(s.close_to_tray(), "close-to-tray defaults to on");
     }
 }

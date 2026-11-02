@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-reset-models-folder"
+description = "Enables the reset_models_folder command without any pre-configured scope."
+commands.allow = ["reset_models_folder"]
+
+[[permission]]
+identifier = "deny-reset-models-folder"
+description = "Denies the reset_models_folder command without any pre-configured scope."
+commands.deny = ["reset_models_folder"]

@@ -65,7 +65,6 @@ struct Launch {
     runtime: Runtime,
     dirs: DataDirs,
     models_dir: PathBuf,
-    gpu: GpuStatus,
 }
 
 struct Inner {
@@ -78,6 +77,8 @@ struct Inner {
     launch: Option<Launch>,
     /// Known as soon as resolved, so failures during preparation are logged too.
     dirs: Option<DataDirs>,
+    /// Detected on a separate thread (the first nvidia-smi call can take seconds).
+    gpu: Option<GpuStatus>,
     shutting_down: bool,
 }
 
@@ -99,6 +100,7 @@ impl BackendManager {
                 crashes: Vec::new(),
                 launch: None,
                 dirs: None,
+                gpu: None,
                 shutting_down: false,
             }),
         })
@@ -106,6 +108,21 @@ impl BackendManager {
 
     /// Kick off preparation and the first launch on a worker thread (the UI shows progress).
     pub fn start(self: &Arc<Self>) {
+        if self.inner.lock().unwrap().gpu.is_none() {
+            let me = self.clone();
+            thread::spawn(move || {
+                let gpu = runtime_check::detect_gpu();
+                let mut inner = me.inner.lock().unwrap();
+                if let Some(d) = inner.dirs.as_ref() {
+                    d.log(&format!("gpu: {gpu:?}"));
+                }
+                inner.gpu = Some(gpu);
+                let state = inner.state.clone();
+                drop(inner);
+                // Re-announce the current state so the UI re-reads backend_info (and the GPU status).
+                let _ = me.app.emit(STATE_EVENT, state);
+            });
+        }
         let me = self.clone();
         thread::spawn(move || match me.prepare() {
             Ok(launch) => {
@@ -125,7 +142,7 @@ impl BackendManager {
             runtime_source: inner.launch.as_ref().map(|l| l.runtime.source),
             data_root: inner.dirs.as_ref().map(|d| d.root.display().to_string()),
             log_dir: inner.dirs.as_ref().map(|d| d.logs.display().to_string()),
-            gpu: inner.launch.as_ref().map(|l| l.gpu.clone()),
+            gpu: inner.gpu.clone(),
         }
     }
 
@@ -163,6 +180,11 @@ impl BackendManager {
 
     /// Graceful shutdown on app exit. Blocks for at most SHUTDOWN_GRACE (+ a few seconds).
     pub fn shutdown(&self) {
+        self.shutdown_with(SHUTDOWN_GRACE);
+    }
+
+    /// Graceful shutdown with a caller-chosen grace period (e.g. shorter at Windows logoff).
+    pub fn shutdown_with(&self, grace: Duration) {
         {
             let mut inner = self.inner.lock().unwrap();
             if inner.shutting_down {
@@ -171,8 +193,39 @@ impl BackendManager {
             inner.shutting_down = true;
         }
         self.set_state(BackendState::Stopping);
-        self.stop_process(true);
+        self.stop_process_with(true, grace);
         self.set_state(BackendState::Stopped);
+    }
+
+    /// Port and session token of the running backend, while it is ready.
+    pub fn api(&self) -> Option<(u16, String)> {
+        let inner = self.inner.lock().unwrap();
+        matches!(inner.state, BackendState::Ready { .. }).then(|| (inner.port, inner.token.clone()))
+    }
+
+    pub fn data_dirs(&self) -> Option<DataDirs> {
+        self.inner.lock().unwrap().dirs.clone()
+    }
+
+    pub fn models_dir(&self) -> Option<PathBuf> {
+        self.inner.lock().unwrap().launch.as_ref().map(|l| l.models_dir.clone())
+    }
+
+    /// Switch the models folder (`None` = default under the data root), persist it, and
+    /// restart the backend so it scans the new location. Files are never moved.
+    pub fn set_models_dir(self: &Arc<Self>, dir: Option<PathBuf>) -> Result<PathBuf, String> {
+        let dirs = self.data_dirs().ok_or("The app is still starting")?;
+        let mut settings = DesktopSettings::load(&dirs);
+        settings.models_dir = dir;
+        let effective = settings.models_dir(&dirs);
+        std::fs::create_dir_all(&effective).map_err(|e| format!("cannot use {}: {e}", effective.display()))?;
+        settings.save(&dirs)?;
+        dirs.log(&format!("models folder set to {}", effective.display()));
+        if let Some(launch) = self.inner.lock().unwrap().launch.as_mut() {
+            launch.models_dir = effective.clone();
+        }
+        self.restart();
+        Ok(effective)
     }
 
     // ---- preparation ------------------------------------------------------------------
@@ -206,9 +259,6 @@ impl BackendManager {
                     .into())
             }
         }
-        let gpu = runtime_check::detect_gpu();
-        dirs.log(&format!("gpu: {gpu:?}"));
-
         let mut settings = DesktopSettings::load(&dirs);
         if settings.legacy_decision.is_none() && !dirs.database().exists() {
             match find_legacy_install() {
@@ -240,7 +290,7 @@ impl BackendManager {
             }
             std::fs::create_dir_all(&models_dir).map_err(|e| format!("cannot create {}: {e}", models_dir.display()))?;
         }
-        Ok(Launch { runtime, dirs, models_dir, gpu })
+        Ok(Launch { runtime, dirs, models_dir })
     }
 
     fn ask_import(&self, legacy: &LegacyInstall) -> bool {
@@ -420,6 +470,10 @@ impl BackendManager {
     }
 
     fn stop_process(&self, graceful: bool) {
+        self.stop_process_with(graceful, SHUTDOWN_GRACE);
+    }
+
+    fn stop_process_with(&self, graceful: bool, grace: Duration) {
         let (process, port, token) = {
             let mut inner = self.inner.lock().unwrap();
             (inner.process.take(), inner.port, inner.token.clone())
@@ -429,7 +483,7 @@ impl BackendManager {
             let signal = GracefulSignal::Custom(Box::new(move || {
                 let _ = http(port, "POST", "/api/system/shutdown", Some(&token));
             }));
-            process.shutdown(signal, SHUTDOWN_GRACE)
+            process.shutdown(signal, grace)
         } else {
             process.force_kill();
             process.wait_exit(Duration::from_secs(5));
@@ -480,6 +534,24 @@ fn free_port() -> u16 {
         .and_then(|l| l.local_addr())
         .map(|a| a.port())
         .expect("no free loopback port")
+}
+
+/// Minimal HTTP/1.1 request to the loopback backend; returns the status and the JSON body.
+pub(crate) fn http_json(port: u16, method: &str, path: &str, token: &str) -> Result<(u16, serde_json::Value), String> {
+    let addr = SocketAddrV4::new(Ipv4Addr::LOCALHOST, port);
+    let mut s = TcpStream::connect_timeout(&addr.into(), Duration::from_millis(500)).map_err(|e| e.to_string())?;
+    s.set_read_timeout(Some(Duration::from_secs(5))).ok();
+    let request = format!(
+        "{method} {path} HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\nX-Mustang-Token: {token}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    );
+    s.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
+    let mut raw = Vec::new();
+    s.read_to_end(&mut raw).map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&raw);
+    let (head, body) = text.split_once("\r\n\r\n").ok_or("malformed response")?;
+    let status = head.split_whitespace().nth(1).and_then(|c| c.parse().ok()).ok_or("malformed status line")?;
+    let json = serde_json::from_str(body).unwrap_or(serde_json::Value::Null);
+    Ok((status, json))
 }
 
 /// Minimal HTTP/1.1 request to the loopback backend; returns the status code.
