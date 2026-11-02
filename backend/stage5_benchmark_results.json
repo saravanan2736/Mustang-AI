@@ -1,0 +1,38 @@
+[
+  {
+    "context_size": 2048,
+    "advisory_est_vram_mb": 1053.6,
+    "advisory_risk": "LOW_RISK",
+    "switch_time_sec": 1.87,
+    "layers_offloaded": "25/99",
+    "authoritative_vram_mb": 373.7,
+    "nvml_used_vram_mb": 524.0,
+    "tokens_generated": 64,
+    "generation_time_sec": 0.37,
+    "tok_per_sec": 174.2
+  },
+  {
+    "context_size": 4096,
+    "advisory_est_vram_mb": 1077.6,
+    "advisory_risk": "LOW_RISK",
+    "switch_time_sec": 1.97,
+    "layers_offloaded": "25/99",
+    "authoritative_vram_mb": 373.7,
+    "nvml_used_vram_mb": 550.0,
+    "tokens_generated": 64,
+    "generation_time_sec": 0.37,
+    "tok_per_sec": 174.5
+  },
+  {
+    "context_size": 8192,
+    "advisory_est_vram_mb": 1125.6,
+    "advisory_risk": "LOW_RISK",
+    "switch_time_sec": 1.95,
+    "layers_offloaded": "25/99",
+    "authoritative_vram_mb": 373.7,
+    "nvml_used_vram_mb": 602.0,
+    "tokens_generated": 64,
+    "generation_time_sec": 0.36,
+    "tok_per_sec": 179.3
+  }
+]

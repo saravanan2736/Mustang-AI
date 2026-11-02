@@ -1,0 +1,67 @@
+{
+  "scan_latency": {
+    "cold_ms": 7.26,
+    "warm_ms": 4.5,
+    "files_scanned": 1
+  },
+  "hf_latency": {
+    "search_ms": 558.25,
+    "details_ms": 690.66,
+    "quantizations_found": 9
+  },
+  "hashing_throughput": {
+    "10MB": {
+      "elapsed_ms": 7.8,
+      "throughput_mb_s": 1282.26
+    },
+    "50MB": {
+      "elapsed_ms": 38.91,
+      "throughput_mb_s": 1285.13
+    },
+    "100MB": {
+      "elapsed_ms": 78.73,
+      "throughput_mb_s": 1270.19
+    }
+  },
+  "inference_performance": {
+    "25_tokens": {
+      "requested_tokens": 25,
+      "actual_tokens": 25,
+      "ttft_ms": 163.8,
+      "generation_seconds": 0.08,
+      "tps": 314.44
+    },
+    "50_tokens": {
+      "requested_tokens": 50,
+      "actual_tokens": 50,
+      "ttft_ms": 141.27,
+      "generation_seconds": 0.14,
+      "tps": 351.97
+    },
+    "100_tokens": {
+      "requested_tokens": 100,
+      "actual_tokens": 100,
+      "ttft_ms": 134.55,
+      "generation_seconds": 0.31,
+      "tps": 323.42
+    },
+    "200_tokens": {
+      "requested_tokens": 200,
+      "actual_tokens": 200,
+      "ttft_ms": 133.81,
+      "generation_seconds": 0.6,
+      "tps": 331.73
+    }
+  },
+  "switch_latency": {
+    "switch_ms": 1023.88,
+    "unload_ms": 75.86,
+    "vram_at_8k_mb": 373.73
+  },
+  "memory_accuracy": {
+    "2k_estimated_vram_mb": 771.4,
+    "2k_runtime_vram_mb": 373.73,
+    "8k_estimated_vram_mb": 843.4,
+    "8k_runtime_vram_mb": 373.73
+  }
+}

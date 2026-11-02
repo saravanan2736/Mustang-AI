@@ -1,0 +1,105 @@
+{
+  "context_scaling": [
+    {
+      "context": 2048,
+      "tier": "LOW_RISK",
+      "weights_mb": 440.5,
+      "kv_cache_mb": 24.0,
+      "compute_mb": 56.9,
+      "driver_reserve_mb": 250.0,
+      "advisory_est_vram_mb": 771.4,
+      "authoritative_model_mb": 373.73,
+      "nvml_used_mb": 524.0,
+      "nvml_free_mb": 7387.0,
+      "layers_offloaded": "25/99",
+      "switch_time_sec": 2.89,
+      "speed_tok_sec": 168.2
+    },
+    {
+      "context": 4096,
+      "tier": "LOW_RISK",
+      "weights_mb": 440.5,
+      "kv_cache_mb": 48.0,
+      "compute_mb": 56.9,
+      "driver_reserve_mb": 250.0,
+      "advisory_est_vram_mb": 795.4,
+      "authoritative_model_mb": 373.73,
+      "nvml_used_mb": 550.0,
+      "nvml_free_mb": 7361.0,
+      "layers_offloaded": "25/99",
+      "switch_time_sec": 1.95,
+      "speed_tok_sec": 177.5
+    },
+    {
+      "context": 8192,
+      "tier": "LOW_RISK",
+      "weights_mb": 440.5,
+      "kv_cache_mb": 96.0,
+      "compute_mb": 56.9,
+      "driver_reserve_mb": 250.0,
+      "advisory_est_vram_mb": 843.4,
+      "authoritative_model_mb": 373.73,
+      "nvml_used_mb": 602.0,
+      "nvml_free_mb": 7309.0,
+      "layers_offloaded": "25/99",
+      "switch_time_sec": 1.95,
+      "speed_tok_sec": 170.0
+    },
+    {
+      "context": 16384,
+      "tier": "LOW_RISK",
+      "weights_mb": 440.5,
+      "kv_cache_mb": 192.0,
+      "compute_mb": 56.9,
+      "driver_reserve_mb": 250.0,
+      "advisory_est_vram_mb": 939.4,
+      "authoritative_model_mb": 373.73,
+      "nvml_used_mb": 706.0,
+      "nvml_free_mb": 7205.0,
+      "layers_offloaded": "25/99",
+      "switch_time_sec": 1.48,
+      "speed_tok_sec": 156.7
+    },
+    {
+      "context": 32768,
+      "tier": "LOW_RISK",
+      "weights_mb": 440.5,
+      "kv_cache_mb": 384.0,
+      "compute_mb": 56.9,
+      "driver_reserve_mb": 250.0,
+      "advisory_est_vram_mb": 1131.4,
+      "authoritative_model_mb": 373.73,
+      "nvml_used_mb": 914.0,
+      "nvml_free_mb": 6997.0,
+      "layers_offloaded": "25/99",
+      "switch_time_sec": 1.97,
+      "speed_tok_sec": 171.0
+    }
+  ],
+  "variability": [
+    {
+      "target_tokens": 25,
+      "actual_tokens": 25.0,
+      "duration_sec": 0.21,
+      "effective_tok_sec": 119.4
+    },
+    {
+      "target_tokens": 50,
+      "actual_tokens": 50.0,
+      "duration_sec": 0.276,
+      "effective_tok_sec": 181.3
+    },
+    {
+      "target_tokens": 100,
+      "actual_tokens": 100.0,
+      "duration_sec": 0.46,
+      "effective_tok_sec": 219.8
+    },
+    {
+      "target_tokens": 200,
+      "actual_tokens": 200.0,
+      "duration_sec": 0.752,
+      "effective_tok_sec": 266.5
+    }
+  ]
+}

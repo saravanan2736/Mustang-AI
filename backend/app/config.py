@@ -1,0 +1,59 @@
+"""
+Mustang AI Configuration & Paths
+Strict localhost binding, deterministic directories, and security constants.
+"""
+
+from pathlib import Path
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="MUSTANG_")
+
+    # Base filesystem paths
+    APP_NAME: str = "Mustang AI"
+    VERSION: str = "0.1.0"
+    
+    BASE_DIR: Path = Path(__file__).resolve().parent.parent.parent
+    BACKEND_DIR: Path = BASE_DIR / "backend"
+    MODELS_DIR: Path = BASE_DIR / "models"
+    DOWNLOADS_DIR: Path = MODELS_DIR / ".downloads"
+    RUNTIME_DIR: Path = BACKEND_DIR / "runtime" / "bin"
+    RUN_DIR: Path = BACKEND_DIR / "run"
+
+    # Networking (Strict Loopback)
+    HOST: str = "127.0.0.1"
+    PORT: int = 18000
+    
+    # Inference Engine (llama-server)
+    ENGINE_HOST: str = "127.0.0.1"
+    ENGINE_PORT: int = 18080
+    ENGINE_STARTUP_TIMEOUT_SECONDS: int = 45
+    ENGINE_HEALTH_INTERVAL_SECONDS: float = 2.0
+    
+    # Security
+    ALLOWED_ORIGINS: list[str] = [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:1420",
+        "http://localhost:1420",
+        "tauri://localhost",
+    ]
+    TOKEN_HEADER_NAME: str = "X-Mustang-Token"
+    BOOTSTRAP_WINDOW_SECONDS: int = 60
+
+    # Default Generation Parameters
+    DEFAULT_MAX_TOKENS: int = 2048
+    DEFAULT_TEMPERATURE: float = 0.7
+    DEFAULT_TOP_P: float = 0.9
+    DEFAULT_TOP_K: int = 40
+    DEFAULT_REPEAT_PENALTY: float = 1.1
+    DEFAULT_CONTEXT_SIZE: int = 4096
+    DEFAULT_BATCH_SIZE: int = 512
+
+
+settings = Settings()
+settings.MODELS_DIR.mkdir(parents=True, exist_ok=True)
+settings.DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+settings.RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+settings.RUN_DIR.mkdir(parents=True, exist_ok=True)

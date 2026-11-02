@@ -1,0 +1,26 @@
+# Dependencies / toolchains
+node_modules/
+backend/.venv/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+
+# Build outputs
+frontend/dist/
+src-tauri/target/
+desktop-prototypes/**/target/
+src-tauri/gen/schemas/
+
+# Large binaries (reproducible via backend/runtime/setup_runtime.py)
+backend/runtime/bin/
+backend/runtime/downloads/
+
+# User data — never commit
+models/
+backend/run/*.db
+backend/run/*.db-wal
+backend/run/*.db-shm
+backend/run/.mustang_token
+backend/run/*.log
+backend/run/*.gguf
+backend/run/temp_*
