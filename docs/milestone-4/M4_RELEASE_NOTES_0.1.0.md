@@ -30,7 +30,7 @@ Run `Mustang AI_0.1.0_x64-setup.exe` (no administrator rights needed). This buil
 - Automatic updates are built in but not configured for this build (no update server); install new versions with the installer.
 - Each update downloads the full installer (~550 MB).
 - Tested on one machine (RTX 5050 Laptop); clean-machine, multi-GPU and older-GPU testing is still pending. See `M4_PHASEG_RELEASE_REPORT.md`.
-- Under investigation before final release: in a 20-minute stress test the engine host's memory use rose once to about 2 GB and then stayed level, and some requests took up to 80 s. Normal chat use was not affected in testing.
+- Under investigation before final release: in stress tests of the desktop app, some requests stalled for 40-80 s, the engine host's memory rose once to about 2 GB, and quitting afterwards took about 10 s. Short sessions were not affected in testing.
 
 ## Fixed since the first release candidate
 
