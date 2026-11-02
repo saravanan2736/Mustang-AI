@@ -128,7 +128,26 @@ Ruled out so far:
 - Idle with the UI polling and a model loaded: flat (150–157 MB working set for 2 min).
 - Engine output overflowing the output monitor: the longest `-v` line is 2 KB (limit 64 KB); ~100 KB of output per chat.
 
-Not yet known: whether the stall originates in the engine, the backend or the test harness (the soak drives the API through the WebView via CDP), and what allocates ~1.4 GB once. **This should be explained before the release is signed off**: next steps are a soak with `-v` removed, and one driving the backend directly instead of through the WebView, with `tracemalloc` snapshots around a slow cycle.
+**Follow-up (20:31–20:45): the backend and the bundled runtime are not the cause.** The identical soak cycle (load with alternating context, 5 non-streamed `/v1` chats, 1 streamed `/api/chat` saved to a new conversation, unload every 4th cycle) was driven directly over HTTP (`scripts/e2e/direct_soak.py`, isolated ports and run folder, real engine):
+
+| Backend | Cycles | Cycle time | Stalls | Working set |
+|---|---|---|---|---|
+| Source tree, dev venv | 67 in 5 min | 3.9–5.0 s | none | 79–115 MB, garbage-collection sawtooth, no growth |
+| Embedded release runtime (`build\desktop-runtime\python` + bundled `backend`) | 48+ in 4 min | 4.3–4.8 s | none | 75–111 MB, same pattern |
+| Desktop app, requests issued from the WebView page via CDP (the soak above) | 13 in 3.8 min / 53 in 21 min | ~9 s, ~100 s every few minutes | yes | step to ~2.1 GB |
+
+The backend log of the slow cycle 15 shows where the time goes: httpx logs an engine call when its response headers arrive, so the gaps of **39.6 s and 67.5 s are between consecutive chats**, not inside the engine's replies. Each reply streams in ~0.3 s; the next request arrives late. No warnings or errors are logged in the whole soak window.
+
+**Conclusion so far:** the stall happens on the desktop request path the harness uses (a `fetch` evaluated in the WebView page through `node scripts/e2e/cdp_eval.mjs`, one Node process per call), not in the backend or engine when driven on its own. The one-time ~1.4 GB step in the backend's working set happens in those same stalled cycles and is **still unexplained**: driven directly, the backend never grows.
+
+**Throttling ruled out (20:43–20:48).** A 5.5-min soak on the release build with `--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows` added to the WebView2 arguments behaved the same: 19 cycles, 0 errors, a ~100 s cycle at cycle 15, and the step to ~2.0 GB (670 → 2018 MB), flat afterwards.
+
+**Pattern across all three desktop runs:** the first stall and the memory step come at the **same time after app start**, t ≈ 105–125 s (cycle 15 at t 123 s, cycle 13 at t 105 s, cycle 15 at t 117 s), whatever the number of cycles done. That suggests something **time-triggered inside the desktop app** (the shell, the UI, or a backend background task started by a request only the desktop makes) rather than the soak workload itself. Every soak run starts the app fresh, which is why it shows up within the first 2 minutes.
+
+**Before sign-off:**
+1. Enable the uvicorn access log in the release backend and run the app idle-then-busy for 3 minutes: list every request the shell and UI make around t ≈ 100–130 s.
+2. Take `tracemalloc` snapshots (or a `py-spy dump`) of the backend at t ≈ 90 s and t ≈ 140 s.
+3. Run real use for an hour (UI chats, model switches) and watch `python.exe` memory in Task Manager.
 
 ## 8. Not testable here: for the release owner
 
