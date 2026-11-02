@@ -7,8 +7,7 @@ publish = false
 
 [lib]
 name = "mustang_desktop_lib"
-# Desktop-only: the template's "staticlib"/"cdylib" exist for mobile targets, and a
-# cdylib exceeds GNU ld's 65,535 export-ordinal limit on x86_64-pc-windows-gnu.
+# Desktop-only: the template's "staticlib"/"cdylib" exist for mobile targets.
 crate-type = ["rlib"]
 
 [build-dependencies]

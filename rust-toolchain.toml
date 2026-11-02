@@ -1,0 +1,7 @@
+# Mustang AI builds with the MSVC toolchain (Tauri's supported Windows target).
+# Scoped to this repository; the machine's rustup default is unchanged.
+[toolchain]
+# The host triple is explicit: plain "stable" would resolve to the machine's
+# default host (currently x86_64-pc-windows-gnu).
+channel = "stable-x86_64-pc-windows-msvc"
+profile = "minimal"

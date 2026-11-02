@@ -24,14 +24,14 @@ Git: baseline commit `05232d5` on `main` (pre-Phase-B checkpoint); Phase B work 
 | Node.js / npm | v24.21.0 / 11.19.0 |
 | Rust / Cargo | **1.99.1 / 1.99.1, already installed** via rustup at `%USERPROFILE%\.cargo\bin` (not on PATH). Toolchain `stable-x86_64-pc-windows-gnu` |
 | C toolchain | MinGW-w64 GCC 16.2.0 (WinLibs UCRT, on PATH), provides `ld`, `windres`, `dlltool` |
-| MSVC Build Tools | **Not installed** (`Microsoft Visual Studio\18` folder exists but contains no toolchain). Windows SDK 10.0.26100 present |
+| MSVC Build Tools | Initially **not installed**. **Installed after approval** (2026-11-02): Visual Studio Build Tools 2026 18.11.2 (`Microsoft.VisualStudio.Workload.VCTools` + recommended, via `winget`), Windows SDK 10.0.26100; Rust `stable-x86_64-pc-windows-msvc` 1.99.1 added via rustup and pinned by the repo-level `rust-toolchain.toml` (the machine's rustup default remains GNU) |
 | WebView2 Runtime | 156.0.4314.58 (Evergreen, per-machine) |
 | Tauri | crate `tauri` 2.12.5, `tauri-build` 2.7.4, `wry` 0.57.1, `webview2-com` 0.39.1, `tauri-plugin-single-instance` 2.5.5, CLI `@tauri-apps/cli` 2.12.4 |
 | Git | 2.55.0. The repo was not under version control, so I ran `git init`, added a `.gitignore` excluding models, DB, token, runtime binaries, venv and node_modules, then made checkpoint commit `05232d5` and created branch `m4-phase-b`. The commit is authored with the user's address per-commit; the global git identity was not changed. |
 | Frontend build (baseline) | `npm run build` OK (5.0 s; pre-existing >500 kB chunk warning) |
 | Backend tests (baseline) | **118 passed** (50.8 s) |
 
-No system-wide changes were made. Rust was already present. Everything installed is project-local (`npm install` at the repo root; Cargo crates in the Cargo cache).
+System-wide changes: only the approved Visual Studio Build Tools 2026 install (and the user-level rustup MSVC toolchain). Everything else is project-local (`npm install` at the repo root; Cargo crates in the Cargo cache).
 
 ### 118 vs 120 test discrepancy (resolved, no tests modified)
 
@@ -92,7 +92,9 @@ The existing React application is used **unchanged**. It is not modified to call
 
 ## 4. Commands and results
 
-All Rust commands need `%USERPROFILE%\.cargo\bin` on PATH and, with the GNU toolchain, a `CARGO_TARGET_DIR` without spaces (§5).
+All Rust commands need `%USERPROFILE%\.cargo\bin` on PATH. Results below were first obtained on the GNU toolchain and then **re-run on MSVC** (§5.1); both sets pass. On MSVC, builds go to the normal in-project `src-tauri/target/`.
+
+Note: `desktop:build` and `probe:build` write the same `src-tauri/target/release/mustang-desktop.exe`. Rebuild the one you intend to run.
 
 | Test | Command | Result |
 |---|---|---|
@@ -119,21 +121,38 @@ All Rust commands need `%USERPROFILE%\.cargo\bin` on PATH and, with the GNU tool
 | `ld: export ordinal too large` | Tauri template `crate-type = ["staticlib","cdylib","rlib"]`; the cdylib exceeds GNU ld's 65,535 export limit | `crate-type = ["rlib"]` (cdylib/staticlib are only needed for mobile) |
 | Linker warning `.rsrc merge failure: multiple non-default manifests` | MinGW's default manifest plus Tauri's Common-Controls v6 manifest both get embedded | The app runs; Tauri's manifest is present in the binary; which one Windows selects is unverified |
 
-**Recommendation (decision needed before Phase C/F):** install the **MSVC toolchain**: Visual Studio Build Tools (Desktop development with C++, Windows SDK) plus `rustup target add x86_64-pc-windows-msvc`. MSVC is Tauri's officially supported Windows target, removes all three workarounds, and is what signing and NSIS bundling are normally validated against. This is a system-wide install (~6–8 GB) and needs your approval. Phase B stays reproducible on GNU with the documented workarounds.
+**Decision: switch to MSVC (approved and done).**
+
+### 5.1 MSVC re-verification (2026-11-02)
+
+| Check | GNU result | MSVC result |
+|---|---|---|
+| Build from the path with spaces, no `CARGO_TARGET_DIR` | failed (`windres`) | ✅ clean, in-project `src-tauri/target/` |
+| Linker warnings | `.rsrc merge failure: multiple non-default manifests` | ✅ none |
+| Manifests embedded in release exe | 2 | ✅ 1 (Tauri's, with Common-Controls v6) |
+| Release exe size | 4.3 MB | 4.2 MB |
+| `tauri dev` launch | ✅ | ✅ window responding, live data from the running backend via the Vite origin |
+| `tauri build --no-bundle` release launch | ✅ | ✅ UI renders (still CORS-blocked by the production backend, F1) |
+| Release connectivity probe | 18/18 | ✅ 18/18 (`results/probe-results-release-1793612193.json`) |
+| Supervisor scenarios | 9/9 | ✅ 9/9 |
+| In-app hard-kill → Python tree cleaned | ✅ | ✅ 3/3 processes gone within 2 s |
+
+All three GNU workarounds are obsolete. The only remnant is `crate-type = ["rlib"]`, kept deliberately because a desktop-only app does not need the mobile `cdylib`/`staticlib`.
+
+The backend was not re-run after the toolchain switch: no backend or frontend file changed (verified with `git status`), and its last run (118 passed) happened after all Phase B source changes.
 
 ## 6. Known limitations
 
 - The main UI is not yet wired to the shell (it still uses `http://127.0.0.1:18000` and bootstrap auth). That needs the Phase C backend and frontend changes.
 - The release build cannot talk to the current backend until `http://tauri.localhost` is allow-listed (F1, Phase C).
 - No managed backend in the default build. `desktop_runtime_info.backend.managed` is `false`.
-- Build outputs live in the scratchpad target dir (GNU path workaround); they are not committed.
 - `dev` runs without a CSP (`devCsp: null`) because Vite injects inline scripts.
 - `frontend/public/mustang-logo.svg` is still missing (pre-existing 404). The new `src-tauri/icons/app-icon.svg` can be copied there in Phase C.
 - `desktop-prototypes/process-supervisor/target/` (41 MB) is a local build cache, git-ignored.
 
 ## 7. Additional work required for production integration (Phase C onward)
 
-1. **Toolchain:** MSVC decision/installation (see §5).
+1. **Toolchain:** done. MSVC installed and pinned (§5.1).
 2. **Backend (Phase C):**
    - accept `MUSTANG_SESSION_TOKEN` from the environment;
    - add `http://tauri.localhost` to the allow-list in desktop mode;

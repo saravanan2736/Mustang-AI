@@ -65,5 +65,5 @@ Not implemented in Phase B, per scope: the final authentication architecture, an
 ## 6. Residual risks
 
 - **LNA (R1):** WebView2 156 reports permission state `prompt` for local-network permissions but does not gate loopback fetches. Re-test on each WebView2 major version during Phase G.
-- **GNU toolchain binaries** embed two application manifests (linker warning). The Common-Controls v6 manifest is present and the app runs, but which manifest Windows selects is not yet verified. Production builds should use MSVC (see the implementation report).
+- ~~GNU toolchain binaries embed two application manifests~~ **Resolved:** builds now use MSVC; the release exe embeds exactly one manifest (Tauri's).
 - The probe token is visible to the probe UI by design (test-only). The production `backend_info` will be the only path for the real token.

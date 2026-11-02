@@ -20,7 +20,7 @@ Date: 2026-11-02 · WebView2 Runtime 156.0.4314.58 (Chromium 156) · Tauri 2.12.
 - **Supervised by Rust.** The shell picks a free loopback port (`127.0.0.1:0`), generates a 256-bit **test** token, passes it to the mock by environment variable (not argv), and runs it inside a Job Object (see the process lifecycle report). The first launch is deliberately delayed by 2.5 s.
 - **Probe page** (`ui/probe.js`) runs 18 checks with plain `fetch`/`EventSource` (8 s timeout each, so a blocked or pending request shows up as a hang) and writes JSON results via a Rust command.
 
-Run commands (from the repo root, with `%USERPROFILE%\.cargo\bin` on PATH and `CARGO_TARGET_DIR` set to a path without spaces; see the implementation report):
+Run commands (from the repo root, with `%USERPROFILE%\.cargo\bin` on PATH; the MSVC toolchain is selected by `rust-toolchain.toml`). Results were first obtained with a GNU build and then repeated with an MSVC build (`results/probe-results-release-1793612193.json`, 18/18).
 
 ```bash
 npm run probe:build
