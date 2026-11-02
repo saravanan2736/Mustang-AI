@@ -4,6 +4,7 @@ Inspects GGUF metadata to estimate VRAM requirements before loading.
 NOTE: Estimates are non-binding and advisory. Actual llama.cpp allocation is authoritative.
 """
 
+import threading
 from pathlib import Path
 from typing import Literal
 from pydantic import BaseModel
@@ -107,6 +108,59 @@ class MemoryEstimateResult(BaseModel):
     notes: str = ""
 
 
+# Integer hyperparameters ("<arch>.<key>") the estimate reads from the GGUF header.
+_HEADER_KEYS = (
+    "block_count",
+    "embedding_length",
+    "attention.head_count",
+    "attention.head_count_kv",
+    "attention.sliding_window",
+    "attention.key_length",
+    "attention.value_length",
+    "attention.head_dim",
+)
+_HEADER_CACHE_MAX = 64
+_header_cache: dict[tuple[str, int, int], tuple[str | None, dict[str, int]]] = {}
+_header_lock = threading.Lock()
+
+
+def _read_header(gguf_path: Path) -> tuple[str | None, dict[str, int]]:
+    """
+    Architecture and the integer hyperparameters of a GGUF file.
+
+    GGUFReader takes seconds and holds hundreds of MB (the tokenizer arrays) per parse, and the
+    UI asks for an estimate on every slider change and model state change. Each file version
+    (path, size, mtime) is parsed once, and parses are serialized so concurrent requests wait
+    for the one in progress instead of each holding their own copy.
+    """
+    stat = gguf_path.stat()
+    key = (str(gguf_path.resolve()), stat.st_size, stat.st_mtime_ns)
+    with _header_lock:
+        cached = _header_cache.get(key)
+        if cached is not None:
+            return cached
+
+        reader = gguf.GGUFReader(str(gguf_path))
+        arch_field = reader.get_field("general.architecture")
+        arch: str | None = None
+        values: dict[str, int] = {}
+        if arch_field:
+            arch = str(arch_field.parts[arch_field.data[0]], "utf-8") if isinstance(arch_field.data[0], int) else str(arch_field.parts[0])
+            for suffix in _HEADER_KEYS:
+                field = reader.get_field(f"{arch}.{suffix}")
+                if field is not None and len(field.parts) > 0:
+                    try:
+                        values[suffix] = int(field.parts[-1][0]) if hasattr(field.parts[-1], '__getitem__') else int(field.parts[-1])
+                    except Exception:
+                        pass
+        del reader
+
+        if len(_header_cache) >= _HEADER_CACHE_MAX:
+            _header_cache.pop(next(iter(_header_cache)))
+        _header_cache[key] = (arch, values)
+        return arch, values
+
+
 def estimate_model_memory(
     gguf_path: Path,
     requested_gpu_layers: int = 999,
@@ -136,7 +190,7 @@ def estimate_model_memory(
         )
 
     try:
-        reader = gguf.GGUFReader(str(gguf_path))
+        arch, header_values = _read_header(gguf_path)
     except Exception as e:
         return MemoryEstimateResult(
             model_name=model_name,
@@ -146,8 +200,7 @@ def estimate_model_memory(
         )
 
     # 1. Detect Architecture
-    arch_field = reader.get_field("general.architecture")
-    if not arch_field:
+    if not arch:
         return MemoryEstimateResult(
             model_name=model_name,
             architecture="unknown",
@@ -155,7 +208,6 @@ def estimate_model_memory(
             reason="Missing general.architecture in GGUF header.",
         )
 
-    arch = str(arch_field.parts[arch_field.data[0]], "utf-8") if isinstance(arch_field.data[0], int) else str(arch_field.parts[0])
     arch_lower = arch.lower()
 
     # MLA Architecture check (DeepSeek2 / DeepSeek3 / MLA)
@@ -188,13 +240,7 @@ def estimate_model_memory(
 
     # 2. Extract Structural Hyperparameters
     def get_val(key_suffix: str, default: int) -> int:
-        field = reader.get_field(f"{arch}.{key_suffix}")
-        if field is not None and len(field.parts) > 0:
-            try:
-                return int(field.parts[-1][0]) if hasattr(field.parts[-1], '__getitem__') else int(field.parts[-1])
-            except Exception:
-                pass
-        return default
+        return header_values.get(key_suffix, default)
 
     block_count = get_val("block_count", 32)
     embedding_length = get_val("embedding_length", 4096)
