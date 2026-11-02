@@ -15,43 +15,34 @@ import {
   ScanResult,
 } from "../types";
 
-export const BACKEND_URL = "http://127.0.0.1:18000";
+import { backendUrl, sessionToken, TOKEN_HEADER } from "./connection";
 
-let sessionToken: string | null = null;
+/** Fetch an API path on the current backend; always sends the session token when known. */
+export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  const token = sessionToken();
+  if (token) headers.set(TOKEN_HEADER, token);
+  return fetch(`${backendUrl()}${path}`, { ...init, headers });
+}
 
+/** Kept for existing callers; the token is resolved by initBackendConnection() at startup. */
 export async function bootstrapAuth(): Promise<string | null> {
-  if (sessionToken) return sessionToken;
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/auth/bootstrap`);
-    if (res.ok) {
-      const data = await res.json();
-      sessionToken = data.token;
-      return sessionToken;
-    }
-  } catch (err) {
-    console.warn("Bootstrap auth call skipped or unavailable:", err);
-  }
-  return null;
+  return sessionToken();
 }
 
 export function getSessionToken(): string | null {
-  return sessionToken;
+  return sessionToken();
 }
 
-function getHeaders(authenticated = false): HeadersInit {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (authenticated && sessionToken) {
-    headers["X-Mustang-Token"] = sessionToken;
-  }
-  return headers;
+function getHeaders(_authenticated = false): HeadersInit {
+  // The session token is added by apiFetch on every request.
+  return { "Content-Type": "application/json" };
 }
 
 // --- System & Hardware Telemetry ---
 
 export async function fetchHardware(): Promise<HardwareTelemetry> {
-  const res = await fetch(`${BACKEND_URL}/api/system/hardware`);
+  const res = await apiFetch(`/api/system/hardware`);
   if (!res.ok) throw new Error(`Failed to fetch hardware: ${res.statusText}`);
   return res.json();
 }
@@ -59,19 +50,19 @@ export async function fetchHardware(): Promise<HardwareTelemetry> {
 // --- Models & Inference Engine ---
 
 export async function fetchModels(): Promise<ModelInfo[]> {
-  const res = await fetch(`${BACKEND_URL}/api/models`);
+  const res = await apiFetch(`/api/models`);
   if (!res.ok) throw new Error(`Failed to fetch models: ${res.statusText}`);
   return res.json();
 }
 
 export async function fetchModelLibrary(): Promise<LibraryModel[]> {
-  const res = await fetch(`${BACKEND_URL}/api/models/library`);
+  const res = await apiFetch(`/api/models/library`);
   if (!res.ok) throw new Error(`Failed to fetch model library: ${res.statusText}`);
   return res.json();
 }
 
 export async function rescanModels(): Promise<ScanResult> {
-  const res = await fetch(`${BACKEND_URL}/api/models/scan`, {
+  const res = await apiFetch(`/api/models/scan`, {
     method: "POST",
   });
   if (!res.ok) throw new Error(`Failed to scan models: ${res.statusText}`);
@@ -82,8 +73,8 @@ export async function fetchContextRecommendation(
   modelId: string,
   kvType = "f16"
 ): Promise<ModelContextRecommendation> {
-  const res = await fetch(
-    `${BACKEND_URL}/api/models/${encodeURIComponent(modelId)}/context_recommendation?kv_type=${encodeURIComponent(kvType)}`
+  const res = await apiFetch(
+    `/api/models/${encodeURIComponent(modelId)}/context_recommendation?kv_type=${encodeURIComponent(kvType)}`
   );
   if (!res.ok) throw new Error(`Failed to fetch context recommendation: ${res.statusText}`);
   return res.json();
@@ -91,7 +82,7 @@ export async function fetchContextRecommendation(
 
 export async function deleteModel(modelId: string): Promise<{ status: string; deleted: string }> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/models/${encodeURIComponent(modelId)}`, {
+  const res = await apiFetch(`/api/models/${encodeURIComponent(modelId)}`, {
     method: "DELETE",
     headers: getHeaders(true),
   });
@@ -109,8 +100,8 @@ export async function searchHFModels(
   limit = 20,
   sort = "downloads"
 ): Promise<HFSearchResponse> {
-  const url = `${BACKEND_URL}/api/hf/search?query=${encodeURIComponent(query)}&limit=${limit}&sort=${sort}`;
-  const res = await fetch(url);
+  const url = `/api/hf/search?query=${encodeURIComponent(query)}&limit=${limit}&sort=${sort}`;
+  const res = await apiFetch(url);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || "Failed to search Hugging Face models");
@@ -122,8 +113,8 @@ export async function fetchHFRepositoryDetails(
   repoId: string,
   fetchReadme = true
 ): Promise<HFRepositoryDetailResponse> {
-  const url = `${BACKEND_URL}/api/hf/models/${encodeURIComponent(repoId)}?fetch_readme=${fetchReadme}`;
-  const res = await fetch(url);
+  const url = `/api/hf/models/${encodeURIComponent(repoId)}?fetch_readme=${fetchReadme}`;
+  const res = await apiFetch(url);
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || "Failed to fetch repository details");
@@ -134,7 +125,7 @@ export async function fetchHFRepositoryDetails(
 // --- Asynchronous Download Manager ---
 
 export async function fetchDownloads(): Promise<DownloadTask[]> {
-  const res = await fetch(`${BACKEND_URL}/api/downloads`);
+  const res = await apiFetch(`/api/downloads`);
   if (!res.ok) throw new Error(`Failed to fetch downloads: ${res.statusText}`);
   return res.json();
 }
@@ -147,7 +138,7 @@ export async function createDownload(data: {
   total_bytes?: number;
 }): Promise<DownloadTask> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/downloads`, {
+  const res = await apiFetch(`/api/downloads`, {
     method: "POST",
     headers: getHeaders(true),
     body: JSON.stringify(data),
@@ -161,7 +152,7 @@ export async function createDownload(data: {
 
 export async function pauseDownload(id: string): Promise<{ status: string; id: string }> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/downloads/${encodeURIComponent(id)}/pause`, {
+  const res = await apiFetch(`/api/downloads/${encodeURIComponent(id)}/pause`, {
     method: "POST",
     headers: getHeaders(true),
   });
@@ -174,7 +165,7 @@ export async function pauseDownload(id: string): Promise<{ status: string; id: s
 
 export async function resumeDownload(id: string): Promise<{ status: string; id: string }> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/downloads/${encodeURIComponent(id)}/resume`, {
+  const res = await apiFetch(`/api/downloads/${encodeURIComponent(id)}/resume`, {
     method: "POST",
     headers: getHeaders(true),
   });
@@ -187,7 +178,7 @@ export async function resumeDownload(id: string): Promise<{ status: string; id: 
 
 export async function cancelDownload(id: string): Promise<{ status: string; id: string }> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/downloads/${encodeURIComponent(id)}/cancel`, {
+  const res = await apiFetch(`/api/downloads/${encodeURIComponent(id)}/cancel`, {
     method: "POST",
     headers: getHeaders(true),
   });
@@ -200,7 +191,7 @@ export async function cancelDownload(id: string): Promise<{ status: string; id: 
 
 export async function retryDownload(id: string): Promise<{ status: string; id: string }> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/downloads/${encodeURIComponent(id)}/retry`, {
+  const res = await apiFetch(`/api/downloads/${encodeURIComponent(id)}/retry`, {
     method: "POST",
     headers: getHeaders(true),
   });
@@ -216,14 +207,14 @@ export async function fetchModelEstimate(
   gpuLayers = 99,
   ctx = 4096
 ): Promise<MemoryEstimateResult> {
-  const url = `${BACKEND_URL}/api/models/${encodeURIComponent(filename)}/estimate?n_gpu_layers=${gpuLayers}&n_ctx=${ctx}`;
-  const res = await fetch(url);
+  const url = `/api/models/${encodeURIComponent(filename)}/estimate?n_gpu_layers=${gpuLayers}&n_ctx=${ctx}`;
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error(`Failed to fetch estimate: ${res.statusText}`);
   return res.json();
 }
 
 export async function fetchEngineStatus(): Promise<EngineStatus> {
-  const res = await fetch(`${BACKEND_URL}/api/models/status`);
+  const res = await apiFetch(`/api/models/status`);
   if (!res.ok) throw new Error(`Failed to fetch status: ${res.statusText}`);
   return res.json();
 }
@@ -235,7 +226,7 @@ export async function loadModel(
   n_batch = 512
 ): Promise<EngineStatus> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/models/load`, {
+  const res = await apiFetch(`/api/models/load`, {
     method: "POST",
     headers: getHeaders(true),
     body: JSON.stringify({
@@ -255,7 +246,7 @@ export async function loadModel(
 
 export async function unloadModel(): Promise<EngineStatus> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/models/unload`, {
+  const res = await apiFetch(`/api/models/unload`, {
     method: "POST",
     headers: getHeaders(true),
   });
@@ -268,7 +259,7 @@ export async function unloadModel(): Promise<EngineStatus> {
 
 export async function stopGeneration(): Promise<{ status: string }> {
   await bootstrapAuth();
-  const res = await fetch(`${BACKEND_URL}/api/chat/stop`, {
+  const res = await apiFetch(`/api/chat/stop`, {
     method: "POST",
     headers: getHeaders(true),
   });
@@ -279,7 +270,7 @@ export async function stopGeneration(): Promise<{ status: string }> {
 // --- Conversations Persistence ---
 
 export async function fetchConversations(): Promise<ConversationSummary[]> {
-  const res = await fetch(`${BACKEND_URL}/api/conversations`);
+  const res = await apiFetch(`/api/conversations`);
   if (!res.ok) throw new Error(`Failed to fetch conversations: ${res.statusText}`);
   return res.json();
 }
@@ -290,7 +281,7 @@ export async function createConversation(data: {
   system_prompt?: string;
   profile_id?: string;
 }): Promise<ConversationSummary> {
-  const res = await fetch(`${BACKEND_URL}/api/conversations`, {
+  const res = await apiFetch(`/api/conversations`, {
     method: "POST",
     headers: getHeaders(false),
     body: JSON.stringify(data),
@@ -300,7 +291,7 @@ export async function createConversation(data: {
 }
 
 export async function fetchConversation(id: string): Promise<ConversationDetail> {
-  const res = await fetch(`${BACKEND_URL}/api/conversations/${encodeURIComponent(id)}`);
+  const res = await apiFetch(`/api/conversations/${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error(`Failed to load conversation: ${res.statusText}`);
   return res.json();
 }
@@ -309,7 +300,7 @@ export async function updateConversation(
   id: string,
   data: { title?: string; system_prompt?: string; profile_id?: string; model?: string }
 ): Promise<ConversationSummary> {
-  const res = await fetch(`${BACKEND_URL}/api/conversations/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/api/conversations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: getHeaders(false),
     body: JSON.stringify(data),
@@ -319,7 +310,7 @@ export async function updateConversation(
 }
 
 export async function deleteConversation(id: string): Promise<void> {
-  const res = await fetch(`${BACKEND_URL}/api/conversations/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/api/conversations/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: getHeaders(false),
   });
@@ -331,8 +322,8 @@ export async function truncateConversation(
   messageId: string,
   inclusive = false
 ): Promise<void> {
-  const res = await fetch(
-    `${BACKEND_URL}/api/conversations/${encodeURIComponent(conversationId)}/truncate`,
+  const res = await apiFetch(
+    `/api/conversations/${encodeURIComponent(conversationId)}/truncate`,
     {
       method: "POST",
       headers: getHeaders(false),
@@ -345,7 +336,7 @@ export async function truncateConversation(
 // --- Assistant Profiles ---
 
 export async function fetchProfiles(): Promise<AssistantProfile[]> {
-  const res = await fetch(`${BACKEND_URL}/api/profiles`);
+  const res = await apiFetch(`/api/profiles`);
   if (!res.ok) throw new Error("Failed to fetch profiles");
   return res.json();
 }
@@ -355,7 +346,7 @@ export async function createProfile(data: {
   description: string;
   system_prompt: string;
 }): Promise<AssistantProfile> {
-  const res = await fetch(`${BACKEND_URL}/api/profiles`, {
+  const res = await apiFetch(`/api/profiles`, {
     method: "POST",
     headers: getHeaders(false),
     body: JSON.stringify(data),
@@ -368,7 +359,7 @@ export async function createProfile(data: {
 }
 
 export async function deleteProfile(id: string): Promise<void> {
-  const res = await fetch(`${BACKEND_URL}/api/profiles/${encodeURIComponent(id)}`, {
+  const res = await apiFetch(`/api/profiles/${encodeURIComponent(id)}`, {
     method: "DELETE",
     headers: getHeaders(false),
   });
@@ -381,17 +372,69 @@ export async function deleteProfile(id: string): Promise<void> {
 // --- Application & Generation Settings ---
 
 export async function fetchSettings(): Promise<AppSettings> {
-  const res = await fetch(`${BACKEND_URL}/api/settings`);
+  const res = await apiFetch(`/api/settings`);
   if (!res.ok) throw new Error("Failed to fetch settings");
   return res.json();
 }
 
 export async function updateSettings(settings: AppSettings): Promise<AppSettings> {
-  const res = await fetch(`${BACKEND_URL}/api/settings`, {
+  const res = await apiFetch(`/api/settings`, {
     method: "PUT",
     headers: getHeaders(false),
     body: JSON.stringify(settings),
   });
   if (!res.ok) throw new Error("Failed to update settings");
   return res.json();
+}
+
+// --- Download progress stream ---
+
+/**
+ * Subscribe to download progress (SSE frames over an authenticated fetch stream;
+ * EventSource cannot send the session token header). `onClosed` fires when the stream
+ * ends or fails, so the caller can reconnect. Returns an unsubscribe function.
+ */
+export function subscribeDownloadProgress(
+  onProgress: (task: DownloadTask) => void,
+  onClosed: (error?: unknown) => void
+): () => void {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const res = await apiFetch(`/api/downloads/progress`, {
+        headers: { Accept: "text/event-stream" },
+        signal: controller.signal,
+      });
+      if (!res.ok || !res.body) throw new Error(`Progress stream refused: ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        let boundary;
+        while ((boundary = buffer.indexOf("\n\n")) !== -1) {
+          const frame = buffer.slice(0, boundary);
+          buffer = buffer.slice(boundary + 2);
+          let event = "message";
+          const data: string[] = [];
+          for (const line of frame.split("\n")) {
+            if (line.startsWith("event:")) event = line.slice(6).trim();
+            else if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+          }
+          if (event !== "progress" || data.length === 0) continue; // comments / keepalive pings
+          try {
+            onProgress(JSON.parse(data.join("\n")) as DownloadTask);
+          } catch (e) {
+            console.error("Malformed download progress frame:", e);
+          }
+        }
+      }
+      if (!controller.signal.aborted) onClosed();
+    } catch (err) {
+      if (!controller.signal.aborted) onClosed(err);
+    }
+  })();
+  return () => controller.abort();
 }

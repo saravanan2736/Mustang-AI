@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@tauri-apps/api": "2.12.4",
     "@types/prismjs": "^1.26.5",
     "clsx": "^2.1.1",
     "katex": "^0.16.11",

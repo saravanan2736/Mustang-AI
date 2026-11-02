@@ -20,7 +20,7 @@ import {
   cancelDownload,
   retryDownload,
   loadModel,
-  BACKEND_URL,
+  subscribeDownloadProgress,
 } from "../services/api";
 
 interface DownloadQueueProps {
@@ -40,8 +40,8 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [taskToCancel, setTaskToCancel] = useState<DownloadTask | null>(null);
 
-  // SSE event source reference
-  const sseRef = useRef<EventSource | null>(null);
+  // Unsubscribe function for the authenticated progress stream
+  const sseRef = useRef<(() => void) | null>(null);
 
   const loadInitialDownloads = async () => {
     try {
@@ -64,42 +64,31 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
     const connectSSE = () => {
       if (!isMounted) return;
       if (sseRef.current) {
-        sseRef.current.close();
+        sseRef.current();
         sseRef.current = null;
       }
-      try {
-        const es = new EventSource(`${BACKEND_URL}/api/downloads/progress`);
-        sseRef.current = es;
-
-        es.addEventListener("progress", (event) => {
+      sseRef.current = subscribeDownloadProgress(
+        (updatedTask) => {
           if (!isMounted) return;
-          try {
-            const updatedTask: DownloadTask = JSON.parse(event.data);
-            setDownloads((prev) => {
-              const idx = prev.findIndex((t) => t.id === updatedTask.id);
-              if (idx >= 0) {
-                const next = [...prev];
-                next[idx] = updatedTask;
-                return next;
-              } else {
-                return [updatedTask, ...prev];
-              }
-            });
-          } catch (e) {
-            console.error("Malformed SSE progress message:", e);
-          }
-        });
-
-        es.onerror = () => {
-          es.close();
+          setDownloads((prev) => {
+            const idx = prev.findIndex((t) => t.id === updatedTask.id);
+            if (idx >= 0) {
+              const next = [...prev];
+              next[idx] = updatedTask;
+              return next;
+            } else {
+              return [updatedTask, ...prev];
+            }
+          });
+        },
+        (err) => {
+          if (err) console.warn("Download progress stream interrupted:", err);
           if (isMounted) {
             // Reconnect after 3 seconds
             retryTimeout = setTimeout(connectSSE, 3000);
           }
-        };
-      } catch (err) {
-        console.warn("Could not open SSE download connection:", err);
-      }
+        }
+      );
     };
 
     connectSSE();
@@ -108,7 +97,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
       isMounted = false;
       if (retryTimeout) clearTimeout(retryTimeout);
       if (sseRef.current) {
-        sseRef.current.close();
+        sseRef.current();
         sseRef.current = null;
       }
     };

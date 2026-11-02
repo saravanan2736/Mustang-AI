@@ -16,16 +16,17 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 tauri-plugin-single-instance = "2"
+# Rust-side native message boxes only (first-run import prompt); no JS permissions granted.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-
-# Phase B connectivity probe only (feature "probe"); never part of the default build.
-mustang-supervisor = { path = "../desktop-prototypes/process-supervisor", optional = true }
-getrandom = { version = "0.3", optional = true }
+mustang-supervisor = { path = "../crates/mustang-supervisor" }
+getrandom = "0.3"
 
 [features]
 default = []
-probe = ["dep:mustang-supervisor", "dep:getrandom"]
+# Phase B connectivity probe (test-only mock backend); never part of the default build.
+probe = []
 
 [profile.release]
 codegen-units = 1

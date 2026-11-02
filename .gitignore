@@ -9,6 +9,7 @@ backend/.venv/
 frontend/dist/
 src-tauri/target/
 desktop-prototypes/**/target/
+crates/**/target/
 src-tauri/gen/schemas/
 
 # Large binaries (reproducible via backend/runtime/setup_runtime.py)
@@ -27,3 +28,6 @@ backend/run/temp_*
 
 # Per-run private test models folder (hard links to models/*.gguf)
 .mustang-test-models-*/
+
+# Desktop runtime build output and download cache (scripts/build_desktop_runtime.py)
+build/

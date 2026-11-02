@@ -8,13 +8,19 @@ Differences from run_backend.py:
   * file logging with credential redaction (no console in a packaged app)
   * registers the graceful shutdown hook used by POST /api/system/shutdown
   * exits when stdin closes, as a secondary signal that the shell went away
+
+Also: `mustang_launcher.py --import-db <source.db> <destination.db>` performs the desktop
+app's one-time, read-only copy of an existing database (see import_database).
 """
 
+import json
 import logging
 import logging.handlers
 import os
+import sqlite3
 import sys
 import threading
+from pathlib import Path
 
 LOG_FILE_BYTES = 5 * 1024 * 1024
 LOG_FILE_COUNT = 5
@@ -57,7 +63,45 @@ def configure_logging(log_dir, secrets: list[str]) -> None:
         root.addHandler(handler)
 
 
+def import_database(source: Path, destination: Path) -> int:
+    """
+    One-time copy of an existing (legacy) database for the desktop app's first run.
+    The source is opened read-only and never modified; the copy is written next to the
+    destination, integrity-checked, then moved into place. Prints a JSON summary.
+    """
+    if destination.exists():
+        print(json.dumps({"ok": False, "error": f"destination already exists: {destination}"}))
+        return 2
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    staging = destination.with_suffix(".importing")
+    staging.unlink(missing_ok=True)
+    src = sqlite3.connect(f"{source.resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        dst = sqlite3.connect(staging)
+        try:
+            src.backup(dst)
+            integrity = dst.execute("PRAGMA integrity_check").fetchone()[0]
+            counts = {
+                table: dst.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                for (table,) in dst.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+            }
+        finally:
+            dst.close()
+    finally:
+        src.close()
+    if integrity != "ok":
+        staging.unlink(missing_ok=True)
+        print(json.dumps({"ok": False, "error": f"integrity_check: {integrity}"}))
+        return 3
+    staging.replace(destination)
+    print(json.dumps({"ok": True, "tables": counts}))
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) == 4 and sys.argv[1] == "--import-db":
+        return import_database(Path(sys.argv[2]), Path(sys.argv[3]))
+
     from app.config import settings
 
     secrets = [settings.SESSION_TOKEN.get_secret_value()]

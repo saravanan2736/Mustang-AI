@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { AppSettings, ChatMessage } from "../types";
-import { BACKEND_URL, stopGeneration, truncateConversation } from "../services/api";
+import { apiFetch, stopGeneration, truncateConversation } from "../services/api";
 
 export function useChatStream() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -34,7 +34,7 @@ export function useChatStream() {
     let tokenCount = 0;
 
     try {
-      const res = await fetch(`${BACKEND_URL}${endpoint}`, {
+      const res = await apiFetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(bodyPayload),

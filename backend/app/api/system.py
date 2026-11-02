@@ -31,7 +31,8 @@ async def health_check():
 )
 async def get_hardware_metrics():
     """Returns authentic NVIDIA GPU VRAM and DDR5 host RAM telemetry."""
-    return get_system_telemetry()
+    # nvidia-smi is a blocking subprocess call: run it off the event loop.
+    return await asyncio.to_thread(get_system_telemetry)
 
 
 @router.post(

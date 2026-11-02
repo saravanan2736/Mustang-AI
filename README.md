@@ -58,4 +58,23 @@ Frontend serves at: `http://127.0.0.1:5173`
 cd "S:\Mustang AI\backend"
 .\.venv\Scripts\pytest.exe -v
 ```
+Tests run against a private run directory and a private, hard-linked copy of `models\`; they never modify `backend\run\mustang.db` or delete your models.
+
+---
+
+## Desktop App (Milestone 4, in progress)
+
+Requires Rust (MSVC toolchain, pinned by `rust-toolchain.toml`) and Visual Studio Build Tools (C++).
+
+```powershell
+cd "S:\Mustang AI"
+npm run desktop:dev        # native window; backend from source (backend\.venv), UI from Vite on 5173
+npm run desktop:build      # embedded Python runtime + release app: src-tauri\target\release\mustang-desktop.exe
+npm run runtime:test       # backend test suite inside the embedded runtime
+```
+
+- User data lives in `%LOCALAPPDATA%\MustangAI\` (`data\mustang.db`, `logs\`, `desktop.json`). On first launch the app offers to import an existing `backend\run\mustang.db` (copied read-only) and to keep using the existing `models\` folder in place.
+- The shell starts the backend on free loopback ports with a per-launch session token and stops it gracefully on exit.
+- Build release binaries with `npm run desktop:build` only. A plain `cargo build --release` produces a dev-mode binary that loads the Vite dev server.
+- Design and status: `docs\milestone-4\`.
 

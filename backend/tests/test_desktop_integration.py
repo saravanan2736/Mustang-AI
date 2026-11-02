@@ -18,7 +18,7 @@ from app.config import settings
 from app.core import security
 from app.db import database
 from app.main import app
-from mustang_launcher import RedactingFilter
+from mustang_launcher import RedactingFilter, import_database
 
 PUBLIC_ROUTES = {"/health", "/api/auth/bootstrap"}
 TAURI_ORIGIN = "http://tauri.localhost"
@@ -201,6 +201,65 @@ async def test_fresh_database_gets_version_without_backup(monkeypatch, tmp_path)
     assert not (tmp_path / "backups").exists()
     with sqlite3.connect(db_path) as con:
         assert con.execute("PRAGMA user_version").fetchone()[0] == database.SCHEMA_VERSION
+
+
+def test_legacy_import_copies_without_touching_source(tmp_path, capsys):
+    source_dir = tmp_path / "legacy run dir"  # space in path, like "S:\Mustang AI"
+    source_dir.mkdir()
+    source = source_dir / "mustang.db"
+    _make_legacy_db(source)
+    with sqlite3.connect(source) as con:
+        con.execute("PRAGMA journal_mode=WAL")
+        con.execute("INSERT INTO conversations VALUES ('c2', 'in wal', 'm.gguf', '', 2.0, 2.0)")
+    before = source.read_bytes()
+    destination = tmp_path / "desktop" / "data" / "mustang.db"
+
+    assert import_database(source, destination) == 0
+    assert '"ok": true' in capsys.readouterr().out
+    assert source.read_bytes() == before
+    with sqlite3.connect(destination) as con:
+        assert con.execute("SELECT COUNT(*) FROM conversations").fetchone()[0] == 2
+    assert not destination.with_suffix(".importing").exists()
+
+
+def test_legacy_import_refuses_existing_destination(tmp_path):
+    source, destination = tmp_path / "a.db", tmp_path / "b.db"
+    _make_legacy_db(source)
+    _make_legacy_db(destination)
+    before = destination.read_bytes()
+    assert import_database(source, destination) == 2
+    assert destination.read_bytes() == before
+
+
+@pytest.mark.asyncio
+async def test_slow_memory_estimate_does_not_block_other_requests(async_client: AsyncClient, monkeypatch):
+    """GGUF estimation takes seconds on real models; it must not stall chat or health."""
+    import time
+    from app.api import models as models_api
+
+    def slow_estimate(**kwargs):
+        time.sleep(1.5)
+        raise RuntimeError("stub")
+
+    monkeypatch.setattr(models_api, "estimate_model_memory", slow_estimate)
+    monkeypatch.setattr(models_api.security, "validate_model_path", lambda name: name)
+
+    async def estimate():
+        try:
+            await async_client.get("/api/models/x.gguf/estimate")
+        except RuntimeError:
+            pass
+
+    # Timed from dispatch: a blocking handler freezes the loop, so a timer started after
+    # an asyncio.sleep would only start once the block is over.
+    started = time.perf_counter()
+    task = asyncio.create_task(estimate())
+    await asyncio.sleep(0.2)
+    res = await async_client.get("/health")
+    elapsed = time.perf_counter() - started
+    await task
+    assert res.status_code == 200
+    assert elapsed < 1.0, f"/health answered {elapsed:.2f}s after dispatch, behind a 1.5 s estimate"
 
 
 def test_launcher_log_redaction():

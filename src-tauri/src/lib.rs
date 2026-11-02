@@ -1,29 +1,45 @@
-//! Mustang AI desktop shell (M4 Phase B).
+//! Mustang AI desktop shell.
 //!
-//! The default build is only a native window around the existing React UI plus one
-//! read-only IPC command. The `probe` feature adds the Phase B connectivity
-//! experiment (a test-only mock backend under a Job Object); it is never part of
-//! the default build.
+//! A native window around the existing React UI, plus the Rust-owned lifecycle of the
+//! Python backend (see `backend.rs`). The `probe` feature replaces the real backend with
+//! the Phase B connectivity experiment and is never part of the default build.
 
 use tauri::Manager;
 
+#[cfg(not(feature = "probe"))]
+mod paths;
 mod runtime_info;
+#[cfg(not(feature = "probe"))]
+mod backend;
 #[cfg(feature = "probe")]
 mod probe;
 
 pub fn run() {
-    let builder = tauri::Builder::default().plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-        // A second launch focuses the existing window instead of starting another
-        // instance that would compete for VRAM and the database.
-        if let Some(w) = app.get_webview_window("main") {
-            let _ = w.unminimize();
-            let _ = w.show();
-            let _ = w.set_focus();
-        }
-    }));
+    let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A second launch focuses the existing window instead of starting another
+            // instance that would compete for VRAM and the database.
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+        .plugin(tauri_plugin_dialog::init());
 
     #[cfg(not(feature = "probe"))]
-    let builder = builder.invoke_handler(tauri::generate_handler![runtime_info::desktop_runtime_info]);
+    let builder = builder
+        .setup(|app| {
+            let manager = backend::BackendManager::new(app.handle().clone());
+            app.manage(manager.clone());
+            manager.start();
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            runtime_info::desktop_runtime_info,
+            backend::backend_info,
+            backend::backend_restart,
+        ]);
 
     #[cfg(feature = "probe")]
     let builder = builder
@@ -39,7 +55,18 @@ pub fn run() {
             probe::probe_report,
         ]);
 
-    builder
-        .run(tauri::generate_context!())
-        .expect("error while running Mustang AI desktop shell");
+    let app = builder
+        .build(tauri::generate_context!())
+        .expect("error while building Mustang AI desktop shell");
+
+    app.run(|_handle, _event| {
+        #[cfg(not(feature = "probe"))]
+        if let tauri::RunEvent::Exit = _event {
+            // Graceful backend stop (persists partial output, pauses downloads, unloads the
+            // model). If this process dies instead, the Job Object kills the tree.
+            if let Some(manager) = _handle.try_state::<std::sync::Arc<backend::BackendManager>>() {
+                manager.shutdown();
+            }
+        }
+    });
 }

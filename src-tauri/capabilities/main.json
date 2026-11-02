@@ -1,8 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main",
-  "description": "Main window: read-only desktop runtime information. No shell, filesystem, HTTP or process permissions.",
+  "description": "Main window: backend connection info/restart, runtime info, and listening to backend state events. No shell, filesystem, HTTP or process permissions.",
   "local": true,
   "windows": ["main"],
-  "permissions": ["allow-desktop-runtime-info"]
+  "permissions": [
+    "allow-desktop-runtime-info",
+    "allow-backend-info",
+    "allow-backend-restart",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten"
+  ]
 }

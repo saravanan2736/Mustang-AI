@@ -4,6 +4,7 @@ Handles GGUF discovery, model library management, advisory VRAM estimations,
 and dynamic model load/unload.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -170,12 +171,15 @@ async def get_model_context_recommendation(
                 detail=f"Model '{model_id}' not found in library.",
             )
 
-    hw = hardware.get_system_telemetry()
+    # Blocking work (nvidia-smi, GGUF parsing) runs off the event loop so chat streaming
+    # and other requests are not stalled while it completes.
+    hw = await asyncio.to_thread(hardware.get_system_telemetry)
     vram_free = hw.gpu.vram_free_mb if hw.gpu.available else 2000.0
     vram_used = hw.gpu.vram_used_mb if hw.gpu.available else None
     ram_avail = hw.memory.ram_available_mb
 
-    result = model_library.calculate_context_recommendations(
+    result = await asyncio.to_thread(
+        model_library.calculate_context_recommendations,
         model=model,
         available_vram_mb=vram_free,
         available_ram_mb=ram_avail,
@@ -294,7 +298,9 @@ async def get_model_memory_estimate(
     Advisory only; runtime allocation by llama.cpp remains authoritative.
     """
     resolved_path = security.validate_model_path(filename)
-    return estimate_model_memory(
+    # GGUF parsing takes seconds on real models: keep it off the event loop.
+    return await asyncio.to_thread(
+        estimate_model_memory,
         gguf_path=resolved_path,
         requested_gpu_layers=n_gpu_layers,
         target_ctx=n_ctx,

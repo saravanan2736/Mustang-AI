@@ -6,7 +6,9 @@
   "scripts": {
     "tauri": "tauri",
     "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build --no-bundle",
+    "runtime:build": "backend\\.venv\\Scripts\\python.exe scripts/build_desktop_runtime.py",
+    "runtime:test": "backend\\.venv\\Scripts\\python.exe scripts/test_desktop_runtime.py",
+    "desktop:build": "npm run runtime:build && tauri build --no-bundle --config src-tauri/tauri.release.conf.json",
     "probe:dev": "tauri dev --features probe --config src-tauri/tauri.probe.conf.json",
     "probe:build": "tauri build --no-bundle --features probe --config src-tauri/tauri.probe.conf.json"
   },

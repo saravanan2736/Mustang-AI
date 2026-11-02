@@ -26,11 +26,13 @@ pub use win::{process_alive, JobObject};
 
 /// Environment variables passed through to supervised children. Everything else is
 /// dropped so secrets or hostile values in the parent environment do not leak in.
-/// `SystemRoot` is required by Python (sockets, `os.urandom`).
+/// `SystemRoot` is required by Python (sockets, `os.urandom`); `ProgramFiles` /
+/// `ProgramW6432` are required by NVIDIA NVML (`nvidia-smi` fails with "Failed to
+/// initialize NVML" without them).
 pub const ENV_ALLOWLIST: &[&str] = &[
     "SystemRoot", "SystemDrive", "windir", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA",
-    "APPDATA", "ProgramData", "COMPUTERNAME", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE",
-    "OS", "PATHEXT",
+    "APPDATA", "ProgramData", "ProgramFiles", "ProgramW6432", "CommonProgramFiles",
+    "COMPUTERNAME", "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS", "PATHEXT",
 ];
 
 const LOG_CAPACITY: usize = 500;

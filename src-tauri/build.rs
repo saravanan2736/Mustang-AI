@@ -4,6 +4,8 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "desktop_runtime_info",
+            "backend_info",
+            "backend_restart",
             "probe_info",
             "probe_restart_backend",
             "probe_stop_backend",

@@ -42,8 +42,17 @@ pub fn desktop_runtime_info(app: AppHandle) -> DesktopRuntimeInfo {
 }
 
 #[cfg(not(feature = "probe"))]
-fn backend_status(_app: &AppHandle) -> BackendStatus {
-    BackendStatus { managed: false, base_url: None, ready: false, pid: None }
+fn backend_status(app: &AppHandle) -> BackendStatus {
+    use tauri::Manager;
+    let Some(manager) = app.try_state::<std::sync::Arc<crate::backend::BackendManager>>() else {
+        return BackendStatus { managed: false, base_url: None, ready: false, pid: None };
+    };
+    match manager.state() {
+        crate::backend::BackendState::Ready { base_url, pid } => {
+            BackendStatus { managed: true, base_url: Some(base_url), ready: true, pid: Some(pid) }
+        }
+        _ => BackendStatus { managed: true, base_url: None, ready: false, pid: manager.pid() },
+    }
 }
 
 #[cfg(feature = "probe")]
