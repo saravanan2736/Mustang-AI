@@ -4,6 +4,7 @@
     "resources": {
       "../build/desktop-runtime/python/": "python/",
       "../build/desktop-runtime/backend/": "backend/",
+      "../build/desktop-runtime/llama/": "llama/",
       "../build/desktop-runtime/runtime-manifest.json": "runtime-manifest.json"
     }
   }

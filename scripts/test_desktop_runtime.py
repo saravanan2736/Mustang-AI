@@ -50,14 +50,13 @@ def main() -> int:
     )
     # The desktop shell's environment allow-list (crates/mustang-supervisor ENV_ALLOWLIST):
     # PATH is System32 only (where nvidia-smi lives); ProgramFiles is required by NVML.
-    # The llama.cpp runtime is not packaged until Phase D, so the GPU tests use the repo's
-    # verified runtime directory.
+    # GPU tests run against the packaged, pruned llama.cpp runtime.
     allow = ("SystemRoot", "SystemDrive", "windir", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "APPDATA",
              "ProgramData", "ProgramFiles", "ProgramW6432", "CommonProgramFiles", "COMPUTERNAME",
              "NUMBER_OF_PROCESSORS", "PROCESSOR_ARCHITECTURE", "OS", "PATHEXT")
     env = {k: os.environ[k] for k in allow if k in os.environ}
     env["PATH"] = str(Path(os.environ["SystemRoot"]) / "System32")
-    env["MUSTANG_RUNTIME_DIR"] = str(ROOT / "backend" / "runtime" / "bin")
+    env["MUSTANG_RUNTIME_DIR"] = str(RUNTIME / "llama")
     return subprocess.run([str(EMBEDDED), "-c", code], env=env, cwd=str(ROOT / "backend" / "tests")).returncode
 
 

@@ -75,6 +75,7 @@ npm run runtime:test       # backend test suite inside the embedded runtime
 
 - User data lives in `%LOCALAPPDATA%\MustangAI\` (`data\mustang.db`, `logs\`, `desktop.json`). On first launch the app offers to import an existing `backend\run\mustang.db` (copied read-only) and to keep using the existing `models\` folder in place.
 - The shell starts the backend on free loopback ports with a per-launch session token and stops it gracefully on exit.
+- Release builds bundle a pruned llama.cpp b12000 CUDA 13.4 runtime (`build\desktop-runtime\llama`, verified against `runtime-manifest.json` at every start). Without an NVIDIA GPU, or with a driver older than R580, inference falls back to the CPU and the app says so.
 - Build release binaries with `npm run desktop:build` only. A plain `cargo build --release` produces a dev-mode binary that loads the Vite dev server.
 - Design and status: `docs\milestone-4\`.
 

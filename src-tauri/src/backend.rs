@@ -20,7 +20,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
-use crate::paths::{find_legacy_install, DataDirs, DesktopSettings, LegacyDecision, LegacyInstall, Runtime};
+use crate::paths::{find_legacy_install, runtime_manifest, DataDirs, DesktopSettings, LegacyDecision, LegacyInstall, Runtime};
+use crate::runtime_check::{self, GpuStatus};
 
 pub const STATE_EVENT: &str = "backend://state";
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
@@ -55,6 +56,8 @@ pub struct BackendInfo {
     runtime_source: Option<&'static str>,
     data_root: Option<String>,
     log_dir: Option<String>,
+    /// GPU acceleration status (CPU fallback reasons are shown to the user).
+    gpu: Option<GpuStatus>,
 }
 
 #[derive(Clone)]
@@ -62,6 +65,7 @@ struct Launch {
     runtime: Runtime,
     dirs: DataDirs,
     models_dir: PathBuf,
+    gpu: GpuStatus,
 }
 
 struct Inner {
@@ -72,6 +76,8 @@ struct Inner {
     generation: u64,
     crashes: Vec<Instant>,
     launch: Option<Launch>,
+    /// Known as soon as resolved, so failures during preparation are logged too.
+    dirs: Option<DataDirs>,
     shutting_down: bool,
 }
 
@@ -92,6 +98,7 @@ impl BackendManager {
                 generation: 0,
                 crashes: Vec::new(),
                 launch: None,
+                dirs: None,
                 shutting_down: false,
             }),
         })
@@ -116,8 +123,9 @@ impl BackendManager {
             state: inner.state.clone(),
             token: ready.then(|| inner.token.clone()),
             runtime_source: inner.launch.as_ref().map(|l| l.runtime.source),
-            data_root: inner.launch.as_ref().map(|l| l.dirs.root.display().to_string()),
-            log_dir: inner.launch.as_ref().map(|l| l.dirs.logs.display().to_string()),
+            data_root: inner.dirs.as_ref().map(|d| d.root.display().to_string()),
+            log_dir: inner.dirs.as_ref().map(|d| d.logs.display().to_string()),
+            gpu: inner.launch.as_ref().map(|l| l.gpu.clone()),
         }
     }
 
@@ -171,6 +179,7 @@ impl BackendManager {
 
     fn prepare(&self) -> Result<Launch, String> {
         let dirs = DataDirs::resolve(&self.app)?;
+        self.inner.lock().unwrap().dirs = Some(dirs.clone());
         dirs.log("--- desktop shell starting ---");
         let runtime = Runtime::resolve(&self.app)?;
         dirs.log(&format!(
@@ -180,6 +189,25 @@ impl BackendManager {
             runtime.backend_dir.display(),
             runtime.llama_dir
         ));
+
+        // Inference runtime: present, and (when bundled) byte-identical to the build manifest.
+        match (&runtime.llama_dir, runtime_manifest(&self.app)) {
+            (Some(llama), Some(manifest)) => {
+                self.set_state(BackendState::Starting { detail: "Verifying the inference engine".into() });
+                let report = runtime_check::verify_llama(&manifest, llama, &dirs.data)?;
+                dirs.log(&format!(
+                    "llama runtime verified: {} files, {} hashed, {} ms",
+                    report.files, report.hashed, report.millis
+                ));
+            }
+            (Some(_), None) => dirs.log("llama runtime from a development location; manifest check skipped"),
+            (None, _) => {
+                return Err("The inference engine (llama.cpp) is missing from this installation.                             Reinstall Mustang AI to repair it."
+                    .into())
+            }
+        }
+        let gpu = runtime_check::detect_gpu();
+        dirs.log(&format!("gpu: {gpu:?}"));
 
         let mut settings = DesktopSettings::load(&dirs);
         if settings.legacy_decision.is_none() && !dirs.database().exists() {
@@ -212,7 +240,7 @@ impl BackendManager {
             }
             std::fs::create_dir_all(&models_dir).map_err(|e| format!("cannot create {}: {e}", models_dir.display()))?;
         }
-        Ok(Launch { runtime, dirs, models_dir })
+        Ok(Launch { runtime, dirs, models_dir, gpu })
     }
 
     fn ask_import(&self, legacy: &LegacyInstall) -> bool {
@@ -319,7 +347,7 @@ impl BackendManager {
     }
 
     fn spawn_spec(&self, launch: &Launch, port: u16, engine_port: u16, token: &str) -> SpawnSpec {
-        let Launch { runtime, dirs, models_dir } = launch;
+        let Launch { runtime, dirs, models_dir, .. } = launch;
         let llama_dir = runtime.llama_dir.clone().unwrap_or_else(|| dirs.root.join("runtime"));
         let mut spec = SpawnSpec::new(&runtime.python)
             .arg("-u")
@@ -415,8 +443,8 @@ impl BackendManager {
     fn fail(&self, reason: String) {
         let log_tail = {
             let inner = self.inner.lock().unwrap();
-            if let Some(l) = inner.launch.as_ref() {
-                l.dirs.log(&format!("FAILED: {reason}"));
+            if let Some(d) = inner.dirs.as_ref() {
+                d.log(&format!("FAILED: {reason}"));
             }
             inner
                 .process

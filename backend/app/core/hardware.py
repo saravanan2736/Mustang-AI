@@ -3,10 +3,27 @@ Mustang AI Hardware Telemetry Service
 Collects authentic VRAM, RAM, and GPU metrics via nvidia-smi / NVML with zero synthetic metrics.
 """
 
+import os
 import subprocess
 import shutil
+from pathlib import Path
 import psutil
 from pydantic import BaseModel
+
+from app.config import settings
+
+# NVIDIA installs nvidia-smi into System32 with the display driver.
+_SYSTEM_NVIDIA_SMI = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "nvidia-smi.exe"
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _resolve_nvidia_smi() -> str | None:
+    """The driver's nvidia-smi; outside desktop mode a PATH lookup is also allowed."""
+    if _SYSTEM_NVIDIA_SMI.is_file():
+        return str(_SYSTEM_NVIDIA_SMI)
+    if not settings.DESKTOP:
+        return shutil.which("nvidia-smi")
+    return None
 
 
 class GPUMetrics(BaseModel):
@@ -36,7 +53,7 @@ class HardwareTelemetry(BaseModel):
 
 def get_gpu_telemetry() -> GPUMetrics:
     """Queries authentic NVIDIA GPU metrics using nvidia-smi with strict validation."""
-    nvidia_smi = shutil.which("nvidia-smi")
+    nvidia_smi = _resolve_nvidia_smi()
     if not nvidia_smi:
         return GPUMetrics(available=False, name="nvidia-smi not found")
 
@@ -52,6 +69,7 @@ def get_gpu_telemetry() -> GPUMetrics:
             text=True,
             timeout=2.5,
             check=False,
+            creationflags=_CREATE_NO_WINDOW,
         )
 
         if proc.returncode != 0:

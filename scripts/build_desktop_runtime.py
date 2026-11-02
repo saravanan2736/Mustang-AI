@@ -7,7 +7,10 @@ Produces build/desktop-runtime/ (bundled by src-tauri/tauri.release.conf.json):
       python311._pth          isolated path config: no site, no PYTHONPATH, no user site
       Lib/site-packages/      runtime dependencies from backend/requirements.lock
     backend/    app/ + mustang_launcher.py, byte-compiled
-    runtime-manifest.json   versions, sizes and hashes of what was assembled
+    llama/      llama.cpp CUDA 13.4 runtime pruned to llama-server's DLL closure, plus the
+                app-local Visual C++ runtime it imports and third-party license notices
+    runtime-manifest.json   versions, sizes and hashes of what was assembled (the desktop
+                            shell verifies llama/ against it at start-up)
 
 Usage (from the repo root, with the backend dev venv):
     backend\\.venv\\Scripts\\python.exe scripts\\build_desktop_runtime.py            # assemble
@@ -52,6 +55,49 @@ Lib\\site-packages
 """
 
 BACKEND_COPY = ["app", "mustang_launcher.py"]
+
+# llama.cpp: the pinned release tag, URLs and SHA-256 hashes live in one place.
+sys.path.insert(0, str(BACKEND / "runtime"))
+import setup_runtime  # noqa: E402
+
+# CUDA 13.x builds carry native sm_120 kernels (RTX 50-series / Blackwell); 12.4 does not.
+LLAMA_VARIANT = "cuda13"
+# llama-server.exe's import closure (dumpbin /dependents, recursive) plus the ggml backends
+# it loads at run time: CUDA and every CPU dispatch variant (the best one for the host CPU is
+# chosen at start-up). Excluded: other tools, ggml-rpc (network backend) and cudart64_13.dll
+# (ggml-cuda links the CUDA runtime statically; it imports only cublas64_13.dll).
+LLAMA_FILES = [
+    "llama-server.exe", "llama-server-impl.dll", "llama.dll", "llama-common.dll", "mtmd.dll",
+    "ggml.dll", "ggml-base.dll", "ggml-cuda.dll", "cublas64_13.dll", "cublasLt64_13.dll", "libomp.dll",
+    "ggml-cpu-alderlake.dll", "ggml-cpu-cannonlake.dll", "ggml-cpu-cascadelake.dll", "ggml-cpu-cooperlake.dll",
+    "ggml-cpu-haswell.dll", "ggml-cpu-icelake.dll", "ggml-cpu-ivybridge.dll", "ggml-cpu-piledriver.dll",
+    "ggml-cpu-sandybridge.dll", "ggml-cpu-sapphirerapids.dll", "ggml-cpu-skylakex.dll", "ggml-cpu-sse42.dll",
+    "ggml-cpu-x64.dll", "ggml-cpu-zen4.dll", "LICENSE-LLVM-OpenMP",
+]
+LLAMA_LICENSE_URL = f"https://raw.githubusercontent.com/ggml-org/llama.cpp/{setup_runtime.PINNED_TAG}/LICENSE"
+# The llama.cpp binaries import the Visual C++ runtime, which Windows does not ship.
+# Deployed app-locally (permitted by the Visual Studio redistribution terms).
+VC_RUNTIME_DLLS = ["vcruntime140.dll", "vcruntime140_1.dll", "msvcp140.dll"]
+# Imports that are part of Windows 10/11 itself.
+OS_DLL_PREFIXES = ("api-ms-win-",)
+OS_DLLS = {"kernel32.dll", "advapi32.dll", "shell32.dll", "ws2_32.dll", "crypt32.dll", "user32.dll", "ole32.dll",
+           "bcrypt.dll", "psapi.dll"}
+
+THIRD_PARTY_NOTICES = """Mustang AI — third-party components in this folder
+
+llama.cpp (llama-server, llama*.dll, ggml*.dll, mtmd.dll) — release {tag}, CUDA {cuda}
+  MIT License — see LICENSE-llama.cpp.txt — https://github.com/ggml-org/llama.cpp
+
+LLVM OpenMP runtime (libomp.dll)
+  Apache License 2.0 with LLVM Exceptions — see LICENSE-LLVM-OpenMP
+
+NVIDIA cuBLAS (cublas64_13.dll, cublasLt64_13.dll)
+  Redistributed unmodified under the NVIDIA CUDA Toolkit End User License Agreement
+  (redistributable components) — https://docs.nvidia.com/cuda/eula/
+
+Microsoft Visual C++ runtime (vcruntime140.dll, vcruntime140_1.dll, msvcp140.dll) — {vc}
+  Redistributed unmodified under the Microsoft Visual Studio license terms (distributable code)
+"""
 
 
 def sha256_of(path: Path) -> str:
@@ -110,14 +156,128 @@ def fetch_embed() -> Path:
     return target
 
 
-def verify_signature(*files: Path) -> None:
+def verify_signature(*files: Path, signer: str = PY_SIGNER) -> None:
     script = "; ".join(
         f"$s = Get-AuthenticodeSignature -LiteralPath '{f}'; "
-        f"if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch '{PY_SIGNER}') "
+        f"if ($s.Status -ne 'Valid' -or $s.SignerCertificate.Subject -notmatch '{signer}') "
         f"{{ Write-Error ('bad signature: {f.name} ' + $s.Status); exit 1 }}"
         for f in files
     )
     run(["powershell", "-NoProfile", "-NonInteractive", "-Command", script])
+
+
+def vs_install_path() -> Path | None:
+    vswhere = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not vswhere.exists():
+        return None
+    out = subprocess.run([str(vswhere), "-latest", "-products", "*", "-property", "installationPath"],
+                         capture_output=True, text=True).stdout.strip()
+    return Path(out) if out else None
+
+
+def find_vc_runtime() -> tuple[Path, str]:
+    """Newest x64 Visual C++ runtime redistributable folder from the installed Build Tools."""
+    vs = vs_install_path()
+    if vs is None:
+        raise SystemExit("Visual Studio Build Tools not found (needed for the app-local VC++ runtime)")
+    candidates = sorted((vs / "VC" / "Redist" / "MSVC").glob("*/x64/Microsoft.VC*.CRT"))
+    if not candidates:
+        raise SystemExit("No x64 VC++ redistributable folder under the Build Tools")
+    crt = candidates[-1]
+    return crt, crt.parents[1].name
+
+
+def dumpbin_path() -> Path | None:
+    vs = vs_install_path()
+    hits = sorted(vs.glob("VC/Tools/MSVC/*/bin/Hostx64/x64/dumpbin.exe")) if vs else []
+    return hits[-1] if hits else None
+
+
+def pe_imports(dumpbin: Path, pe: Path) -> list[str]:
+    out = subprocess.run([str(dumpbin), "/nologo", "/dependents", str(pe)], capture_output=True, text=True).stdout
+    names, active = [], False
+    for line in out.splitlines():
+        if "Image has the following dependencies" in line:
+            active = True
+        elif "Summary" in line:
+            active = False
+        elif active and line.strip().lower().endswith(".dll"):
+            names.append(line.strip())
+    return names
+
+
+def fetch_llama_zip(kind: str) -> Path:
+    meta = setup_runtime.PINNED_PACKAGES[LLAMA_VARIANT][kind]
+    for folder in (BACKEND / "runtime" / "downloads", CACHE):
+        cand = folder / meta["filename"]
+        if cand.exists() and sha256_of(cand) == meta["sha256"]:
+            return cand
+    CACHE.mkdir(parents=True, exist_ok=True)
+    target = CACHE / meta["filename"]
+    setup_runtime.download_file(f"{setup_runtime.BASE_URL}/{meta['filename']}", target, meta["sha256"])
+    return target
+
+
+def assemble_llama(dest: Path) -> dict:
+    """Pruned, verified llama.cpp runtime. Returns its manifest section."""
+    dest.mkdir(parents=True)
+    wanted = {name.lower(): name for name in LLAMA_FILES}
+    for kind in ("bin", "cudart"):
+        archive = fetch_llama_zip(kind)
+        with zipfile.ZipFile(archive) as z:
+            for member in z.namelist():
+                base = Path(member).name
+                if base.lower() in wanted:
+                    (dest / base).write_bytes(z.read(member))
+                    wanted.pop(base.lower())
+    if wanted:
+        raise SystemExit(f"llama.cpp release is missing expected files: {sorted(wanted.values())}")
+
+    crt, vc_version = find_vc_runtime()
+    for name in VC_RUNTIME_DLLS:
+        shutil.copy2(crt / name, dest / name)
+    verify_signature(*(dest / n for n in VC_RUNTIME_DLLS), signer="Microsoft Corporation")
+
+    print(f"  fetching llama.cpp license ({setup_runtime.PINNED_TAG})")
+    with urllib.request.urlopen(LLAMA_LICENSE_URL) as resp:
+        license_text = resp.read().decode("utf-8")
+    if "MIT License" not in license_text:
+        raise SystemExit("Unexpected llama.cpp LICENSE content")
+    (dest / "LICENSE-llama.cpp.txt").write_text(license_text, encoding="utf-8")
+    (dest / "THIRD-PARTY-NOTICES.txt").write_text(
+        THIRD_PARTY_NOTICES.format(tag=setup_runtime.PINNED_TAG, cuda="13.4", vc=f"MSVC {vc_version}"), encoding="utf-8")
+
+    dumpbin = dumpbin_path()
+    if dumpbin:
+        local = {p.name.lower() for p in dest.iterdir()}
+        missing = set()
+        for pe in [p for p in dest.iterdir() if p.suffix.lower() in (".exe", ".dll")]:
+            for dep in pe_imports(dumpbin, pe):
+                d = dep.lower()
+                if d not in local and d not in OS_DLLS and not d.startswith(OS_DLL_PREFIXES):
+                    missing.add(f"{pe.name} -> {dep}")
+        if missing:
+            raise SystemExit("Unresolved imports in llama runtime:\n  " + "\n  ".join(sorted(missing)))
+        print("  import closure verified with dumpbin: every non-OS DLL import is present locally")
+    else:
+        print("  WARNING: dumpbin not found; import closure not verified")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {"SystemRoot": os.environ["SystemRoot"], "PATH": str(Path(os.environ["SystemRoot"]) / "System32")}
+        version = subprocess.run([str(dest / "llama-server.exe"), "--version"], env=env, cwd=tmp,
+                                 capture_output=True, text=True, timeout=60)
+        text = (version.stdout + version.stderr).strip()
+        if version.returncode != 0 or f"build {setup_runtime.PINNED_TAG.lstrip('b')}" not in text:
+            raise SystemExit(f"llama-server --version failed ({version.returncode}): {text[-400:]}")
+        print(f"  {text.splitlines()[0]}")
+
+    files = sorted(p for p in dest.iterdir() if p.is_file())
+    return {
+        "tag": setup_runtime.PINNED_TAG,
+        "variant": LLAMA_VARIANT,
+        "vc_runtime": vc_version,
+        "files": [{"name": p.name, "size": p.stat().st_size, "sha256": sha256_of(p)} for p in files],
+    }
 
 
 def assemble() -> None:
@@ -169,6 +329,9 @@ def assemble() -> None:
                   env=env, capture_output=True, text=True, cwd=tmp).stdout.strip()
         print(f"  imported OK: python {out}")
 
+    print("Assembling llama.cpp runtime")
+    llama = assemble_llama(OUT / "llama")
+
     files = [p for p in OUT.rglob("*") if p.is_file()]
     manifest = {
         "python": PY_VERSION,
@@ -178,6 +341,7 @@ def assemble() -> None:
         "file_count": len(files),
         "total_bytes": sum(p.stat().st_size for p in files),
         "launcher_sha256": sha256_of(be_dir / "mustang_launcher.py"),
+        "llama": llama,
     }
     (OUT / "runtime-manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
     print(f"Done: {OUT} ({manifest['file_count']} files, {manifest['total_bytes'] / 1e6:.1f} MB)")

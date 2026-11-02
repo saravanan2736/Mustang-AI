@@ -186,8 +186,8 @@ impl Runtime {
     }
 }
 
-/// llama.cpp CUDA runtime directory. Packaged in Phase D; until then the repo's verified
-/// `backend/runtime/bin` is used when present.
+/// llama.cpp CUDA runtime directory: the bundled `llama/` resource (verified against the
+/// runtime manifest at start-up), or an explicit `MUSTANG_DESKTOP_LLAMA_DIR` override.
 fn resolve_llama_dir(app: &AppHandle) -> Option<PathBuf> {
     let has_server = |d: &Path| d.join("llama-server.exe").is_file();
     if let Some(d) = std::env::var_os("MUSTANG_DESKTOP_LLAMA_DIR").map(PathBuf::from) {
@@ -199,8 +199,20 @@ fn resolve_llama_dir(app: &AppHandle) -> Option<PathBuf> {
             return Some(d);
         }
     }
-    let d = normalize(&Path::new(BUILD_REPO_ROOT).join("backend").join("runtime").join("bin"));
-    has_server(&d).then_some(d)
+    // Development builds only: the repository's verified runtime (backend/runtime/bin).
+    #[cfg(debug_assertions)]
+    {
+        let d = normalize(&Path::new(BUILD_REPO_ROOT).join("backend").join("runtime").join("bin"));
+        if has_server(&d) {
+            return Some(d);
+        }
+    }
+    None
+}
+
+/// The bundled `runtime-manifest.json` (release builds), describing the llama.cpp files.
+pub fn runtime_manifest(app: &AppHandle) -> Option<PathBuf> {
+    resource_dir(app).map(|r| r.join("runtime-manifest.json")).filter(|p| p.is_file())
 }
 
 /// Tauri's resource directory without the `\\?\` verbatim prefix it returns on Windows

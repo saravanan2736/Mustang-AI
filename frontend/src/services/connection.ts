@@ -18,11 +18,20 @@ export type BackendStatus =
   | { state: "stopping" }
   | { state: "stopped" };
 
+/** GPU acceleration as detected by the desktop shell (null in browser development). */
+export type GpuStatus = {
+  mode: "cuda" | "cpu_no_gpu" | "cpu_old_driver";
+  gpu_name: string | null;
+  driver: string | null;
+  message: string | null;
+};
+
 type BackendInfo = BackendStatus & {
   token: string | null;
   runtime_source: string | null;
   data_root: string | null;
   log_dir: string | null;
+  gpu: GpuStatus | null;
 };
 
 export const TOKEN_HEADER = "X-Mustang-Token";
@@ -33,6 +42,7 @@ const DEV_BACKEND_URL: string = import.meta.env.VITE_BACKEND_URL ?? "http://127.
 let baseUrl = DEV_BACKEND_URL;
 let token: string | null = null;
 let logDir: string | null = null;
+let gpu: GpuStatus | null = null;
 let status: BackendStatus = { state: "starting", detail: "Connecting to the local engine" };
 const listeners = new Set<(s: BackendStatus) => void>();
 
@@ -46,6 +56,10 @@ export function sessionToken(): string | null {
 
 export function backendLogDir(): string | null {
   return logDir;
+}
+
+export function gpuStatus(): GpuStatus | null {
+  return gpu;
 }
 
 export function getBackendStatus(): BackendStatus {
@@ -65,11 +79,12 @@ function setStatus(next: BackendStatus) {
 async function refreshFromShell(): Promise<void> {
   const info = await invoke<BackendInfo>("backend_info");
   logDir = info.log_dir;
+  gpu = info.gpu;
   if (info.state === "ready" && info.token) {
     baseUrl = info.base_url;
     token = info.token;
   }
-  const { token: _t, runtime_source: _r, data_root: _d, log_dir: _l, ...state } = info;
+  const { token: _t, runtime_source: _r, data_root: _d, log_dir: _l, gpu: _g, ...state } = info;
   setStatus(state as BackendStatus);
 }
 

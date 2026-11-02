@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from "react";
-import { AlertCircle, Loader2, RotateCw } from "lucide-react";
+import { AlertCircle, Cpu, Loader2, RotateCw, X } from "lucide-react";
 import {
   BackendStatus,
   backendLogDir,
   getBackendStatus,
+  gpuStatus,
   initBackendConnection,
   retryBackend,
   subscribeBackendStatus,
@@ -18,6 +19,7 @@ export const BackendGate: React.FC<{ children: React.ReactNode }> = ({ children 
   const [status, setStatus] = useState<BackendStatus>(getBackendStatus());
   const [hasBeenReady, setHasBeenReady] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [gpuNoticeDismissed, setGpuNoticeDismissed] = useState(false);
 
   useEffect(() => {
     const unsubscribe = subscribeBackendStatus((s) => {
@@ -91,9 +93,27 @@ export const BackendGate: React.FC<{ children: React.ReactNode }> = ({ children 
   }
 
   const reconnecting = status.state !== "ready";
+  const gpu = gpuStatus();
+  const showGpuNotice = !gpuNoticeDismissed && gpu !== null && gpu.mode !== "cuda" && !!gpu.message;
   return (
     <>
       {children}
+      {showGpuNotice && (
+        <div className="fixed top-20 right-4 z-40 max-w-md bg-obsidian-900 border border-amber-500/30 rounded-xl p-4 shadow-glass flex items-start gap-3 text-xs">
+          <Cpu className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+          <div className="space-y-1">
+            <p className="font-semibold text-amber-200">Running on CPU</p>
+            <p className="text-amber-100/80 leading-relaxed">{gpu!.message}</p>
+          </div>
+          <button
+            onClick={() => setGpuNoticeDismissed(true)}
+            className="text-amber-400 hover:text-amber-200 p-1 rounded-lg hover:bg-amber-500/20 transition"
+            aria-label="Dismiss"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
       {reconnecting && (
         <div className="fixed inset-0 z-50 bg-obsidian-950/70 backdrop-blur-sm flex items-center justify-center">
           <div className="flex items-center gap-3 bg-obsidian-900 border border-obsidian-700 rounded-xl px-5 py-3 text-sm text-slate-200 shadow-glass">

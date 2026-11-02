@@ -11,6 +11,8 @@ mod paths;
 mod runtime_info;
 #[cfg(not(feature = "probe"))]
 mod backend;
+#[cfg(not(feature = "probe"))]
+mod runtime_check;
 #[cfg(feature = "probe")]
 mod probe;
 

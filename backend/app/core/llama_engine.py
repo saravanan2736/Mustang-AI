@@ -6,7 +6,9 @@ Manages process lifecycle, health probes, readiness detection, VRAM parsing, and
 import asyncio
 import json
 import logging
+import os
 import re
+import secrets
 import shutil
 import subprocess
 import time
@@ -25,6 +27,9 @@ from app.core.engine_base import (
 )
 
 logger = logging.getLogger("mustang.engine.llama")
+
+# No console window for llama-server (the packaged desktop app has no console).
+_CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
 class LlamaServerEngine(InferenceEngine):
@@ -50,16 +55,28 @@ class LlamaServerEngine(InferenceEngine):
         self._lifecycle_lock = asyncio.Lock()
         self._gen_lock = asyncio.Lock()
         self._active_client: httpx.AsyncClient | None = None
+        self._active_response: httpx.Response | None = None
+        self._cancel_requested = False
+
+        # Per-process API key for llama-server (passed via the LLAMA_API_KEY environment
+        # variable, never argv), so other local processes cannot use the engine port.
+        self._api_key: str = ""
+
+    def _auth_headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
 
     def _resolve_binary(self) -> Path:
-        """Finds llama-server.exe in runtime/bin or system PATH."""
+        """Finds llama-server.exe in the runtime directory (or, outside desktop mode, on PATH)."""
         if self._binary_path.exists():
             return self._binary_path
-        
-        system_bin = shutil.which("llama-server") or shutil.which("llama-server.exe")
-        if system_bin:
-            return Path(system_bin)
-        
+
+        # The desktop app runs only its bundled, verified runtime: no PATH lookup that a
+        # planted llama-server.exe could satisfy.
+        if not settings.DESKTOP:
+            system_bin = shutil.which("llama-server") or shutil.which("llama-server.exe")
+            if system_bin:
+                return Path(system_bin)
+
         raise FileNotFoundError(
             f"llama-server executable not found at '{self._binary_path}'. "
             "Please run 'python backend/runtime/setup_runtime.py' to download verified Windows CUDA binaries."
@@ -184,6 +201,8 @@ class LlamaServerEngine(InferenceEngine):
             "-b", str(config.n_batch),
             "--host", config.host,
             "--port", str(config.port),
+            "--no-webui",   # the engine port serves the API only
+            "--offline",    # never fetch models or other data from the network
             "-v",
         ]
         if config.flash_attention:
@@ -192,10 +211,13 @@ class LlamaServerEngine(InferenceEngine):
         logger.info(f"Spawning llama-server: {' '.join(cmd)}")
 
         try:
+            self._api_key = secrets.token_hex(32)
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
+                env={**os.environ, "LLAMA_API_KEY": self._api_key},
+                creationflags=_CREATE_NO_WINDOW,
             )
         except Exception as err:
             self._error_message = f"Failed to execute process: {err}"
@@ -388,6 +410,7 @@ class LlamaServerEngine(InferenceEngine):
                 "messages": [{"role": m.role, "content": m.content} for m in request.messages],
                 "temperature": request.temperature,
                 "top_p": request.top_p,
+                "top_k": request.top_k,
                 "max_tokens": request.max_tokens,
                 "repeat_penalty": request.repeat_penalty,
                 "stream": True,
@@ -395,16 +418,20 @@ class LlamaServerEngine(InferenceEngine):
 
             start_time = time.time()
             token_count = 0
+            self._cancel_requested = False
 
             try:
                 async with httpx.AsyncClient(timeout=120.0) as client:
                     self._active_client = client
-                    async with client.stream("POST", url, json=payload) as resp:
+                    async with client.stream("POST", url, json=payload, headers=self._auth_headers()) as resp:
+                        self._active_response = resp
                         if resp.status_code != 200:
                             err_body = await resp.aread()
                             raise RuntimeError(f"llama-server error {resp.status_code}: {err_body.decode('utf-8')}")
 
                         async for line in resp.aiter_lines():
+                            if self._cancel_requested:
+                                break
                             if not line or not line.startswith("data:"):
                                 continue
 
@@ -434,22 +461,34 @@ class LlamaServerEngine(InferenceEngine):
                                 )
                             except json.JSONDecodeError:
                                 continue
+            except Exception:
+                # Closing the upstream stream (cancel_generation) surfaces as a read error here.
+                if not self._cancel_requested:
+                    raise
             finally:
+                self._active_response = None
                 self._active_client = None
                 self._state = EngineState.READY
 
+            if self._cancel_requested:
+                logger.info("Generation cancelled; upstream stream closed")
+                yield ChatChunk(id="cancelled", model=self._config.model_path.name, delta_content="", finish_reason="stop")
+
     async def cancel_generation(self) -> bool:
-        """Issues slot cancellation to llama-server and interrupts active client stream."""
+        """
+        Stops the in-flight generation by closing the upstream HTTP stream: llama-server
+        cancels a task when its client disconnects (verified on b12000, slot idle within
+        ~0.15 s). There is no slot "cancel" action; /slots/{id}?action=cancel returns 501.
+        """
         if not self._config:
             return False
 
-        logger.info("Cancelling active generation...")
-        try:
-            # llama.cpp slot cancellation API
-            async with httpx.AsyncClient(timeout=2.0) as client:
-                await client.post(f"http://{self._config.host}:{self._config.port}/slots/0?action=cancel")
-        except Exception as e:
-            logger.debug(f"Slot cancellation endpoint call note: {e}")
-
-        self._state = EngineState.READY
+        response = self._active_response
+        if response is not None:
+            logger.info("Cancelling active generation (closing upstream stream)...")
+            self._cancel_requested = True
+            try:
+                await response.aclose()
+            except Exception as e:
+                logger.debug(f"Upstream stream close note: {e}")
         return True
