@@ -3,6 +3,7 @@ Mustang AI Conversations API
 Thread management, persistent message storage, truncation, and history querying in SQLite.
 """
 
+import json
 import logging
 import time
 import uuid
@@ -35,11 +36,23 @@ class UpdateConversationRequest(BaseModel):
 class MessageItem(BaseModel):
     id: str
     conversation_id: str
-    role: Literal["system", "user", "assistant"]
+    role: Literal["system", "user", "assistant", "tool"]
     content: str
     token_count: int = 0
     finish_reason: str | None = None
     created_at: float
+    tool_calls: list[dict] | None = None  # agent mode: calls made by this assistant turn
+    tool_call_id: str | None = None  # agent mode: the call a "tool" row answers
+
+
+def _tool_calls(raw: str | None) -> list[dict] | None:
+    if not raw:
+        return None
+    try:
+        calls = json.loads(raw)
+        return calls if isinstance(calls, list) else None
+    except json.JSONDecodeError:
+        return None
 
 
 class AddMessageRequest(BaseModel):
@@ -91,7 +104,7 @@ async def list_conversations(
             SELECT 
                 c.id, c.title, c.model, c.system_prompt, c.profile_id, c.created_at, c.updated_at,
                 COUNT(m.id) AS message_count,
-                (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC, rowid DESC LIMIT 1) AS last_message
+                (SELECT content FROM messages WHERE conversation_id = c.id AND role IN ('user', 'assistant') AND content != '' ORDER BY created_at DESC, rowid DESC LIMIT 1) AS last_message
             FROM conversations c
             LEFT JOIN messages m ON c.id = m.conversation_id
             GROUP BY c.id
@@ -179,6 +192,8 @@ async def get_conversation(conversation_id: str):
                 token_count=m["token_count"] or 0,
                 finish_reason=m["finish_reason"],
                 created_at=m["created_at"],
+                tool_calls=_tool_calls(m["tool_calls"]),
+                tool_call_id=m["tool_call_id"],
             )
             for m in msg_rows
         ]
@@ -236,7 +251,8 @@ async def update_conversation(conversation_id: str, req: UpdateConversationReque
         msg_count = cnt_row[0]["count"] if cnt_row else 0
 
         last_row = await db.execute_fetchall(
-            "SELECT content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            "SELECT content FROM messages WHERE conversation_id = ? AND role IN ('user', 'assistant') AND content != '' "
+            "ORDER BY created_at DESC, rowid DESC LIMIT 1",
             (conversation_id,),
         )
         last_msg = last_row[0]["content"] if last_row else None

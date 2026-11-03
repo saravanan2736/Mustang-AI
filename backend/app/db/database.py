@@ -13,9 +13,10 @@ logger = logging.getLogger("mustang.db")
 
 DB_PATH: Path = settings.RUN_DIR / "mustang.db"
 
-# Stored in PRAGMA user_version. v1 = the Milestone 3 schema below (legacy databases
-# report 0). Bump when a migration is added; a backup is taken before migrating.
-SCHEMA_VERSION = 1
+# Stored in PRAGMA user_version. v1 = the Milestone 3 schema (legacy databases report 0);
+# v2 = messages gain tool_calls / tool_call_id and the "tool" role (M5 agent mode).
+# Bump when a migration is added; a backup is taken before migrating.
+SCHEMA_VERSION = 2
 BACKUP_KEEP = 5
 
 INIT_SQL = """
@@ -40,6 +41,8 @@ CREATE TABLE IF NOT EXISTS messages (
     token_count INTEGER DEFAULT 0,
     finish_reason TEXT,
     created_at REAL NOT NULL,
+    tool_calls TEXT,
+    tool_call_id TEXT,
     FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
 );
 
@@ -222,6 +225,15 @@ async def init_db():
         ]:
             try:
                 await db.execute(f"ALTER TABLE models ADD COLUMN {col_def};")
+                await db.commit()
+            except Exception:
+                pass
+
+        # Migration v1 -> v2: tool turns of agent mode (JSON list of calls on assistant rows,
+        # the answered call's id on "tool" rows). Additive: v1 rows read as plain text turns.
+        for col_def in ["tool_calls TEXT", "tool_call_id TEXT"]:
+            try:
+                await db.execute(f"ALTER TABLE messages ADD COLUMN {col_def};")
                 await db.commit()
             except Exception:
                 pass

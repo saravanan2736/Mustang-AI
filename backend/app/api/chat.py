@@ -4,6 +4,7 @@ Handles real-time token streaming with client disconnection, thread persistence,
 conversation auto-titling, and response regeneration.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -13,6 +14,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.agent.loop import DEFAULT_MAX_STEPS, cancel_all as cancel_agent_loops, run_agent
+from app.agent.registry import ToolContext
+from app.agent.workspace import Workspace, WorkspaceError
 from app.api.models import get_engine
 from app.core import security
 from app.core.engine_base import (
@@ -20,11 +24,22 @@ from app.core.engine_base import (
     ChatMessage,
     EngineState,
     InferenceEngine,
+    ToolCall,
 )
 from app.db.database import get_db
 
 logger = logging.getLogger("mustang.chat")
 router = APIRouter(prefix="/api/chat", tags=["chat"])
+
+
+class AgentOptions(BaseModel):
+    """Agent mode for one reply: the model may call the built-in read-only tools."""
+    workspace: str | None = Field(default=None, max_length=1024)  # folder the file tools may read
+    max_steps: int = Field(default=DEFAULT_MAX_STEPS, ge=1, le=16)
+
+
+class UIChatRequest(ChatCompletionRequest):
+    agent: AgentOptions | None = None
 
 
 class RegenerateRequest(BaseModel):
@@ -34,6 +49,130 @@ class RegenerateRequest(BaseModel):
     top_k: int = Field(default=40, ge=1, le=200)
     max_tokens: int = Field(default=2048, ge=1, le=16384)
     repeat_penalty: float = Field(default=1.1, ge=0.0, le=2.0)
+    agent: AgentOptions | None = None
+
+
+def _agent_context(options: AgentOptions, conv_id: str) -> ToolContext:
+    try:
+        workspace = Workspace(options.workspace) if options.workspace else None
+    except WorkspaceError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Workspace: {e}")
+    return ToolContext(workspace=workspace, conversation_id=conv_id)
+
+
+def _history_message(row) -> ChatMessage:
+    """A stored message as a chat turn, including agent-mode tool fields (schema v2)."""
+    calls = None
+    if row["tool_calls"]:
+        try:
+            calls = [ToolCall.model_validate(c) for c in json.loads(row["tool_calls"])]
+        except (ValueError, TypeError):
+            calls = None
+    return ChatMessage(role=row["role"], content=row["content"], tool_calls=calls or None,
+                       tool_call_id=row["tool_call_id"] if row["role"] == "tool" else None)
+
+
+async def _insert_message(conv_id: str, role: str, content: str, *, tool_calls=None, tool_call_id=None,
+                          token_count: int = 0, finish_reason: str | None = "stop") -> None:
+    db = await get_db()
+    try:
+        now = time.time()
+        await db.execute(
+            """
+            INSERT INTO messages (id, conversation_id, role, content, token_count, finish_reason, created_at, tool_calls, tool_call_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (str(uuid.uuid4()), conv_id, role, content, token_count, finish_reason, now,
+             json.dumps([c.model_dump() for c in tool_calls]) if tool_calls else None, tool_call_id),
+        )
+        await db.execute("UPDATE conversations SET updated_at = ? WHERE id = ?", (now, conv_id))
+        await db.commit()
+    finally:
+        await db.close()
+
+
+async def _stream_agent_response(
+    engine: InferenceEngine,
+    chat_req: ChatCompletionRequest,
+    ctx: ToolContext,
+    options: AgentOptions,
+    conv_id: str,
+    request: Request,
+) -> StreamingResponse:
+    """
+    Agent mode over SSE. Text arrives as usual (choices[0].delta.content); tool steps arrive as
+    extra chunks with an "agent" object ({"event": "tool_call" | "tool_result" | "done", ...}),
+    which a client without agent support ignores. Tool steps are saved as they happen; the final
+    answer is saved like a normal reply.
+    """
+    completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+    created_ts = int(time.time())
+    model_name = chat_req.model or "local-model"
+
+    def frame(delta: dict, finish_reason=None, agent: dict | None = None) -> str:
+        payload = {"id": completion_id, "created": created_ts, "model": model_name,
+                   "choices": [{"index": 0, "delta": delta, "finish_reason": finish_reason}]}
+        if agent is not None:
+            payload["agent"] = agent
+        return f"data: {json.dumps(payload)}\n\n"
+
+    async def generator() -> AsyncIterator[str]:
+        cancel = asyncio.Event()
+        answer: list[str] = []
+        saved_answer = False
+
+        async def save_answer():
+            nonlocal saved_answer
+            if answer and not saved_answer:
+                saved_answer = True
+                await _insert_message(conv_id, "assistant", "".join(answer), token_count=len(answer))
+
+        try:
+            async for ev in run_agent(engine, chat_req, ctx, max_steps=options.max_steps, cancel=cancel):
+                if await request.is_disconnected():
+                    logger.info("Client disconnected during agent reply. Stopping.")
+                    cancel.set()
+                    await engine.cancel_generation()
+                    break
+                if ev.kind == "content":
+                    answer.append(ev.text)
+                    yield frame({"content": ev.text})
+                elif ev.kind == "assistant_turn":
+                    # The text so far belonged to a tool-calling step, not the final answer.
+                    answer.clear()
+                    await _insert_message(conv_id, "assistant", ev.message.content, tool_calls=ev.message.tool_calls,
+                                          finish_reason="tool_calls")
+                elif ev.kind == "tool_turn":
+                    await _insert_message(conv_id, "tool", ev.message.content, tool_call_id=ev.message.tool_call_id)
+                elif ev.kind == "tool_call":
+                    yield frame({}, agent={"event": "tool_call", "step": ev.step, "call_id": ev.call_id,
+                                           "name": ev.name, "arguments": ev.arguments})
+                elif ev.kind == "tool_result":
+                    yield frame({}, agent={"event": "tool_result", "step": ev.step, "call_id": ev.call_id,
+                                           "name": ev.name, "ok": ev.ok, "content": ev.text[:2000]})
+                elif ev.kind == "done":
+                    await save_answer()
+                    yield frame({}, finish_reason=ev.finish_reason,
+                                agent={"event": "done", "step": ev.step, "reason": ev.reason})
+            await save_answer()
+            yield "data: [DONE]\n\n"
+        except Exception as exc:
+            logger.error(f"Agent streaming error: {exc}")
+            err = {"id": completion_id, "error": str(exc), "choices": [{"index": 0, "delta": {}, "finish_reason": "error"}]}
+            yield f"data: {json.dumps(err)}\n\n"
+            yield "data: [DONE]\n\n"
+        finally:
+            if not saved_answer and answer:
+                try:
+                    await asyncio.shield(save_answer())
+                except Exception as e:
+                    logger.debug(f"Shielded persist note: {e}")
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
+    )
 
 
 async def _stream_chat_response(
@@ -135,7 +274,7 @@ async def _stream_chat_response(
 
 @router.post("/completions")
 async def chat_completions(
-    chat_req: ChatCompletionRequest,
+    chat_req: UIChatRequest,
     request: Request,
     engine: InferenceEngine = Depends(get_engine),
 ):
@@ -145,11 +284,11 @@ async def chat_completions(
     Persists user prompt and assistant stream to the active conversation in SQLite.
     """
     if chat_req.uses_tools:
-        # Conversations store text turns only; tool use here comes with agent mode (M5 Phase C).
-        # OpenAI-compatible clients can use tools through /v1/chat/completions.
+        # Clients can't define tools or send tool turns here: agent mode ("agent") offers the
+        # built-in tools only. OpenAI-compatible clients can bring their own tools on /v1.
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Tools are not supported on this endpoint yet; use /v1/chat/completions.",
+            detail="Custom tools are not accepted on this endpoint; use 'agent' for the built-in tools, or /v1/chat/completions.",
         )
 
     status_obj = await engine.get_status()
@@ -162,6 +301,7 @@ async def chat_completions(
     model_name = status_obj.model_name or "local-model"
     conv_id = chat_req.conversation_id or "default"
     now = time.time()
+    agent_ctx = _agent_context(chat_req.agent, conv_id) if chat_req.agent else None
 
     # Ensure conversation exists and store user turn if needed
     db = await get_db()
@@ -229,6 +369,10 @@ async def chat_completions(
     finally:
         await db.close()
 
+    if agent_ctx is not None:
+        engine_req = ChatCompletionRequest(**chat_req.model_dump(exclude={"agent"}))
+        engine_req.model = model_name
+        return await _stream_agent_response(engine, engine_req, agent_ctx, chat_req.agent, conv_id, request)
     return await _stream_chat_response(engine, chat_req, conv_id, request, model_name)
 
 
@@ -275,12 +419,14 @@ async def regenerate_response(
                 detail="Cannot regenerate: conversation has no messages.",
             )
 
-        # If the last message is an assistant message, delete it
-        if msg_rows[-1]["role"] == "assistant":
-            last_id = msg_rows[-1]["id"]
-            await db.execute("DELETE FROM messages WHERE id = ?", (last_id,))
-            await db.commit()
+        # Delete the last reply: the assistant message and, in agent mode, its tool steps.
+        removed = 0
+        while msg_rows and msg_rows[-1]["role"] in ("assistant", "tool"):
+            await db.execute("DELETE FROM messages WHERE id = ?", (msg_rows[-1]["id"],))
             msg_rows = msg_rows[:-1]
+            removed += 1
+        if removed:
+            await db.commit()
 
         if not msg_rows or msg_rows[-1]["role"] != "user":
             raise HTTPException(
@@ -294,7 +440,7 @@ async def regenerate_response(
             messages.append(ChatMessage(role="system", content=conv["system_prompt"].strip()))
 
         for m in msg_rows:
-            messages.append(ChatMessage(role=m["role"], content=m["content"]))
+            messages.append(_history_message(m))
 
     finally:
         await db.close()
@@ -311,6 +457,10 @@ async def regenerate_response(
     )
 
     model_name = status_obj.model_name or "local-model"
+    if regen_req.agent:
+        chat_req.model = model_name
+        agent_ctx = _agent_context(regen_req.agent, conv_id)
+        return await _stream_agent_response(engine, chat_req, agent_ctx, regen_req.agent, conv_id, request)
     return await _stream_chat_response(engine, chat_req, conv_id, request, model_name)
 
 
@@ -323,5 +473,6 @@ async def stop_generation(
     Halts active generation immediately in-flight.
     Authenticated with X-Mustang-Token.
     """
+    cancel_agent_loops()
     success = await engine.cancel_generation()
     return {"status": "stopped", "success": success}
