@@ -1,23 +1,17 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ChevronDown, Settings } from "lucide-react";
-import { AssistantProfile, EngineStatus, HardwareTelemetry } from "../types";
+import { AssistantProfile } from "../types";
+import { pillCls } from "./ModelSelector";
 
-interface StatusBarProps {
-  telemetry: HardwareTelemetry | null;
-  engineStatus: EngineStatus | null;
-  tokensPerSec: number;
+interface HeaderActionsProps {
   activeProfile?: AssistantProfile | null;
   profiles?: AssistantProfile[];
   onSelectProfile?: (profile: AssistantProfile) => void;
   onOpenSettings?: () => void;
 }
 
-const gb = (mb: number) => (mb / 1024).toFixed(1);
-
-/** Top bar: persona, live resource numbers, settings. */
-export const StatusBar: React.FC<StatusBarProps> = ({
-  telemetry,
-  tokensPerSec,
+/** Right end of the header: persona menu and Settings. */
+export const HeaderActions: React.FC<HeaderActionsProps> = ({
   activeProfile,
   profiles = [],
   onSelectProfile,
@@ -25,8 +19,6 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const gpu = telemetry?.gpu;
-  const mem = telemetry?.memory;
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -38,19 +30,14 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   }, [menuOpen]);
 
   return (
-    <header className="h-11 shrink-0 border-b border-line bg-panel px-3 flex items-center justify-between select-none">
+    <>
       <div className="relative" ref={menuRef}>
-        <button
-          onClick={() => setMenuOpen(!menuOpen)}
-          className="flex items-center gap-1.5 h-7 px-2 rounded-md text-[13px] text-fg hover:bg-raised transition-colors"
-          title="Persona for new messages"
-        >
-          <span>{activeProfile?.name || "General Assistant"}</span>
-          <ChevronDown className="w-3.5 h-3.5 text-muted" />
+        <button onClick={() => setMenuOpen(!menuOpen)} className={pillCls} title="Persona for new messages">
+          <span className="max-w-[80px] xl:max-w-[140px] truncate">{activeProfile?.name || "General Assistant"}</span>
+          <ChevronDown className="w-4 h-4 text-muted" />
         </button>
-
         {menuOpen && (
-          <div className="absolute left-0 top-full mt-1 w-64 rounded-md bg-panel border border-line shadow-menu py-1 z-30">
+          <div className="absolute right-0 top-full mt-1.5 w-64 rounded-2xl bg-panel/95 backdrop-blur-md border border-line/80 shadow-menu p-1.5 z-30 animate-slide-up">
             {profiles.map((p) => (
               <button
                 key={p.id}
@@ -58,36 +45,23 @@ export const StatusBar: React.FC<StatusBarProps> = ({
                   onSelectProfile?.(p);
                   setMenuOpen(false);
                 }}
-                className={`w-full text-left px-3 py-1.5 hover:bg-raised transition-colors ${
-                  activeProfile?.id === p.id ? "text-fg" : "text-muted"
+                className={`w-full text-left px-3 py-2 rounded-xl transition-all ${
+                  activeProfile?.id === p.id
+                    ? "bg-accent/15 text-fg border border-accent/30 font-medium shadow-sm"
+                    : "text-muted hover:bg-raised/70 hover:text-fg border border-transparent"
                 }`}
               >
-                <div className="text-[13px] flex items-center justify-between">
-                  <span>{p.name}</span>
-                  {activeProfile?.id === p.id && <span className="text-xs text-subtle">current</span>}
-                </div>
-                {p.description && <div className="text-xs text-subtle line-clamp-1">{p.description}</div>}
+                <div className="text-[13px] font-medium">{p.name}</div>
+                {p.description && <div className="text-xs text-subtle line-clamp-1 mt-0.5">{p.description}</div>}
               </button>
             ))}
           </div>
         )}
       </div>
-
-      <div className="flex items-center gap-4 text-xs text-muted tabular-nums">
-        {tokensPerSec > 0 && <span>{tokensPerSec} tok/s</span>}
-        <span title={gpu?.available ? gpu.name : "No NVIDIA GPU detected"}>
-          GPU {gpu?.available ? `${gb(gpu.vram_used_mb)} / ${gb(gpu.vram_total_mb)} GB` : "none"}
-        </span>
-        <span>RAM {mem ? `${gb(mem.ram_used_mb)} / ${gb(mem.ram_total_mb)} GB` : "—"}</span>
-        <button
-          onClick={onOpenSettings}
-          className="h-7 w-7 flex items-center justify-center rounded-md text-muted hover:text-fg hover:bg-raised transition-colors"
-          title="Settings"
-          aria-label="Settings"
-        >
-          <Settings className="w-4 h-4" />
-        </button>
-      </div>
-    </header>
+      <button onClick={onOpenSettings} className={pillCls} title="Settings">
+        <span className="hidden xl:inline">Settings</span>
+        <Settings className="w-4 h-4 text-muted" />
+      </button>
+    </>
   );
 };

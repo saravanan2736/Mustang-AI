@@ -40,6 +40,8 @@ interface ModelLibraryModalProps {
   engineStatus: EngineStatus | null;
   onStatusChange: (status: EngineStatus) => void;
   onModelSelected?: (filename: string) => void;
+  /** Tab to show when the library opens (default: local models). */
+  initialTab?: "LOCAL" | "HF" | "DOWNLOADS";
 }
 
 export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
@@ -48,8 +50,12 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
   engineStatus,
   onStatusChange,
   onModelSelected,
+  initialTab = "LOCAL",
 }) => {
-  const [activeTab, setActiveTab] = useState<"LOCAL" | "HF" | "DOWNLOADS">("LOCAL");
+  const [activeTab, setActiveTab] = useState<"LOCAL" | "HF" | "DOWNLOADS">(initialTab);
+  useEffect(() => {
+    if (isOpen) setActiveTab(initialTab);
+  }, [isOpen, initialTab]);
   const [models, setModels] = useState<LibraryModel[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isScanning, setIsScanning] = useState(false);
@@ -212,32 +218,32 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
-      <div className="relative w-full max-w-4xl max-h-[88vh] flex flex-col bg-canvas border border-line rounded-lg shadow-menu overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+      <div className="relative w-full max-w-4xl max-h-[88vh] flex flex-col bg-surface/95 backdrop-blur-xl border border-line/80 rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-3.5 border-b border-line bg-canvas flex-wrap gap-3">
+        <div className="flex items-center justify-between px-6 py-3.5 border-b border-line/50 bg-panel/60 flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1 bg-canvas p-1 rounded-md border border-line">
+            <div className="flex items-center gap-1 bg-canvas/80 p-1 rounded-xl border border-line/60 shadow-inner">
               <button
                 onClick={() => setActiveTab("LOCAL")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeTab === "LOCAL"
-                    ? "bg-accent text-fg"
-                    : "text-muted hover:text-fg hover:bg-raised"
+                    ? "btn-violet text-white shadow-glow-sm font-semibold"
+                    : "text-muted hover:text-fg hover:bg-raised/70"
                 }`}
               >
                 <HardDrive className="w-3.5 h-3.5" />
                 <span>Local Models</span>
-                <span className="text-xs px-1.5 py-0.2 rounded-full bg-raised font-mono">
+                <span className="text-[11px] px-1.5 py-0.2 rounded-full bg-black/30 font-mono">
                   {models.length}
                 </span>
               </button>
               <button
                 onClick={() => setActiveTab("HF")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeTab === "HF"
-                    ? "bg-accent text-fg"
-                    : "text-muted hover:text-fg hover:bg-raised"
+                    ? "btn-violet text-white shadow-glow-sm font-semibold"
+                    : "text-muted hover:text-fg hover:bg-raised/70"
                 }`}
               >
                 <Globe className="w-3.5 h-3.5" />
@@ -245,10 +251,10 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
               </button>
               <button
                 onClick={() => setActiveTab("DOWNLOADS")}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeTab === "DOWNLOADS"
-                    ? "bg-accent text-fg"
-                    : "text-muted hover:text-fg hover:bg-raised"
+                    ? "btn-violet text-white shadow-glow-sm font-semibold"
+                    : "text-muted hover:text-fg hover:bg-raised/70"
                 }`}
               >
                 <Download className="w-3.5 h-3.5" />
@@ -262,18 +268,18 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
               <button
                 onClick={handleRescan}
                 disabled={isScanning || !!actionInProgressId}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-raised hover:bg-raised border border-line text-fg transition disabled:opacity-50"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-raised/80 hover:bg-raised border border-line/70 text-fg transition-all disabled:opacity-50 shadow-sm"
                 title="Rescan models directory"
               >
                 <RefreshCw
-                  className={`w-3.5 h-3.5 ${isScanning ? "animate-spin text-link" : ""}`}
+                  className={`w-3.5 h-3.5 ${isScanning ? "animate-spin text-accent" : "text-muted"}`}
                 />
                 <span>{isScanning ? "Scanning..." : "Rescan Directory"}</span>
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-muted hover:text-fg hover:bg-raised transition"
+              className="p-1.5 rounded-lg text-muted hover:text-fg hover:bg-raised/80 transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -331,7 +337,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
         )}
 
         {/* Filter and Search Bar */}
-        <div className="px-6 py-3 border-b border-line bg-canvas flex items-center gap-3">
+        <div className="px-6 py-3 border-b border-line/50 bg-panel/30 flex items-center gap-3">
           <div className="relative flex-1">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-subtle" />
             <input
@@ -339,7 +345,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
               placeholder="Search by filename, architecture, or quantization..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-panel border border-line rounded-lg pl-9 pr-3 py-1.5 text-xs text-fg placeholder:text-subtle focus:outline-none focus:border-accent transition"
+              className="w-full bg-panel/80 border border-line/70 rounded-xl pl-9 pr-3 py-1.5 text-xs text-fg placeholder:text-subtle focus:outline-none focus:border-accent/80 focus:ring-1 focus:ring-accent/30 transition-all"
             />
           </div>
         </div>
@@ -348,15 +354,15 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {isLoading ? (
             <div className="py-12 flex flex-col items-center justify-center gap-2 text-subtle text-xs">
-              <RefreshCw className="w-6 h-6 animate-spin text-link" />
+              <RefreshCw className="w-6 h-6 animate-spin text-accent" />
               <span>Loading indexed model library...</span>
             </div>
           ) : filteredModels.length === 0 ? (
-            <div className="py-16 text-center border border-dashed border-line rounded-lg bg-raised p-8">
+            <div className="py-16 text-center border border-dashed border-line/70 rounded-2xl bg-panel/30 p-8">
               <HardDrive className="w-10 h-10 mx-auto text-subtle mb-3" />
-              <h3 className="text-sm font-medium text-fg">No GGUF models found</h3>
-              <p className="text-xs text-subtle mt-1 max-w-sm mx-auto">
-                Place your .gguf model files into the <code className="text-link">models/</code> directory and click <strong>Rescan Directory</strong> above.
+              <h3 className="text-sm font-semibold text-fg">No GGUF models found</h3>
+              <p className="text-xs text-subtle mt-1.5 max-w-sm mx-auto leading-relaxed">
+                Place your .gguf model files into the <code className="text-link bg-raised/70 px-1.5 py-0.5 rounded border border-line/40 font-mono">models/</code> directory and click <strong>Rescan Directory</strong> above.
               </p>
             </div>
           ) : (
@@ -372,42 +378,40 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
               return (
                 <div
                   key={model.id}
-                  className={`border rounded-md transition ${
-                    isLoaded
-                      ? "border-success/40 bg-success/10"
-                      : "border-line bg-canvas hover:border-line"
+                  className={`border rounded-2xl transition-all shadow-sm ${
+                    isLoaded ? "border-accent/80 bg-accent/[0.08] shadow-glow-sm" : "border-line/60 bg-panel/60 hover:bg-panel/80 hover:border-line"
                   }`}
                 >
                   <div className="p-4 flex flex-col gap-3">
                     {/* Top Row: Title + Badges + Actions */}
                     <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1 min-w-0">
+                      <div className="space-y-1.5 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="text-sm font-semibold text-fg truncate" title={model.filename}>
+                          <h3 className="text-sm font-semibold text-fg truncate tracking-tight" title={model.filename}>
                             {model.filename}
                           </h3>
                           {isLoaded && (
-                            <span className="flex items-center gap-1 text-xs font-medium text-success bg-success/10 border border-success/40 px-2 py-0.5 rounded-full">
-                              <CheckCircle2 className="w-3 h-3" /> Active / Loaded
+                            <span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.2 rounded-full">
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Loaded
                             </span>
                           )}
-                          <span className="text-xs font-mono px-2 py-0.5 rounded bg-accent/10 text-link border border-accent">
+                          <span className="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-raised/80 border border-line/60 text-muted font-medium">
                             {model.quantization}
                           </span>
-                          <span className="text-xs font-mono px-2 py-0.5 rounded bg-raised text-fg border border-line">
+                          <span className="text-[11px] px-2 py-0.5 rounded-lg bg-raised/80 border border-line/60 text-muted font-medium">
                             {model.architecture}
                           </span>
                           {model.parameter_count && model.parameter_count !== "Unknown" && (
-                            <span className="text-xs font-mono px-2 py-0.5 rounded bg-raised text-fg border border-line">
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded-lg bg-raised/80 border border-line/60 text-muted font-medium">
                               {model.parameter_count}
                             </span>
                           )}
                         </div>
 
                         <div className="text-xs text-subtle flex items-center gap-2 truncate">
-                          <span>Origin: {model.download_origin === "huggingface" ? `HF: ${model.repo_id}` : "Local File"}</span>
+                          <span>{model.download_origin === "huggingface" ? `Hugging Face: ${model.repo_id}` : "Local file"}</span>
                           <span>•</span>
-                          <span className="font-mono">{model.file_size_gb} GB</span>
+                          <span className="font-mono text-fg font-medium">{model.file_size_gb} GB</span>
                           <span>•</span>
                           <span className="font-mono truncate" title={model.canonical_path}>
                             {model.canonical_path}
@@ -421,30 +425,26 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                           <button
                             onClick={() => handleUnloadModel(model)}
                             disabled={isBusy}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-danger/10 hover:bg-danger/10 border border-danger/40 text-danger transition disabled:opacity-50"
+                            className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl text-xs font-medium bg-raised/80 hover:bg-raised border border-line/70 text-fg transition-all disabled:opacity-50"
                           >
                             <Square className="w-3.5 h-3.5" />
-                            <span>{isBusy ? "Unloading..." : "Unload"}</span>
+                            <span>{isBusy ? "Unloading…" : "Unload"}</span>
                           </button>
                         ) : (
                           <button
                             onClick={() => handleLoadModel(model)}
                             disabled={isBusy}
-                            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-medium text-fg transition disabled:opacity-50 ${
-                              engineStatus?.state === "READY"
-                                ? "bg-warning hover:bg-warning"
-                                : "bg-accent hover:bg-accent-hover"
-                            }`}
+                            className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl text-xs font-medium text-white btn-violet shadow-glow-sm hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
                           >
                             {engineStatus?.state === "READY" ? (
                               <>
                                 <ArrowRightLeft className="w-3.5 h-3.5" />
-                                <span>{isBusy ? "Switching..." : "Switch to Model"}</span>
+                                <span>{isBusy ? "Switching…" : "Switch to this"}</span>
                               </>
                             ) : (
                               <>
                                 <Play className="w-3.5 h-3.5 fill-current" />
-                                <span>{isBusy ? "Loading..." : "Load Model"}</span>
+                                <span>{isBusy ? "Loading…" : "Load"}</span>
                               </>
                             )}
                           </button>
@@ -453,7 +453,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                         <button
                           onClick={() => setModelToDelete(model)}
                           disabled={isLoaded || isBusy}
-                          className="p-2 rounded-lg text-subtle hover:text-danger hover:bg-danger/10 border border-transparent hover:border-danger/40 transition disabled:opacity-30 disabled:pointer-events-none"
+                          className="p-2 rounded-xl text-subtle hover:text-danger hover:bg-danger/10 border border-transparent hover:border-danger/40 transition-all disabled:opacity-30 disabled:pointer-events-none"
                           title={isLoaded ? "Cannot delete actively loaded model" : "Delete model from disk"}
                         >
                           <Trash2 className="w-4 h-4" />
@@ -462,21 +462,21 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                     </div>
 
                     {/* Metadata Grid */}
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-line text-xs">
-                      <div className="bg-canvas p-2 rounded-lg border border-line">
-                        <span className="text-subtle block">Context Window</span>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-line/40 text-xs">
+                      <div className="bg-canvas/80 p-2.5 rounded-xl border border-line/60">
+                        <span className="text-subtle block mb-0.5">Context Window</span>
                         <span className="font-mono text-fg font-medium">
                           {model.context_length ? model.context_length.toLocaleString() : "Unknown"} tokens
                         </span>
                       </div>
-                      <div className="bg-canvas p-2 rounded-lg border border-line">
-                        <span className="text-subtle block">Total Layers</span>
+                      <div className="bg-canvas/80 p-2.5 rounded-xl border border-line/60">
+                        <span className="text-subtle block mb-0.5">Total Layers</span>
                         <span className="font-mono text-fg font-medium">
                           {model.block_count > 0 ? `${model.block_count + 1} (${model.block_count} blocks)` : "Unknown"}
                         </span>
                       </div>
-                      <div className="bg-canvas p-2 rounded-lg border border-line">
-                        <span className="text-subtle block">Attention Heads</span>
+                      <div className="bg-canvas/80 p-2.5 rounded-xl border border-line/60">
+                        <span className="text-subtle block mb-0.5">Attention Heads</span>
                         <span className="font-mono text-fg font-medium">
                           {model.head_count > 0 ? (
                             model.head_count_kv && model.head_count_kv !== model.head_count ? (
@@ -489,8 +489,8 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                           )}
                         </span>
                       </div>
-                      <div className="bg-canvas p-2 rounded-lg border border-line">
-                        <span className="text-subtle block">Embedding Dim</span>
+                      <div className="bg-canvas/80 p-2.5 rounded-xl border border-line/60">
+                        <span className="text-subtle block mb-0.5">Embedding Dim</span>
                         <span className="font-mono text-fg font-medium">
                           {model.embedding_dim ? model.embedding_dim : "Unknown"}
                         </span>
@@ -501,39 +501,39 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                     <div className="pt-1 flex items-center justify-between">
                       <button
                         onClick={() => handleToggleRecommendations(model)}
-                        className="text-xs font-medium text-link hover:underline flex items-center gap-1.5 transition"
+                        className="text-xs font-medium text-accent hover:text-accent-hover flex items-center gap-1.5 transition-colors"
                       >
-                        <Sparkles className="w-3.5 h-3.5" />
+                        <Sparkles className="w-3.5 h-3.5 text-accent" />
                         <span>
                           {isRecOpen
                             ? "Hide memory by context size"
                             : "Memory by context size"}
                         </span>
                         {loadingRecId === model.id && (
-                          <RefreshCw className="w-3 h-3 animate-spin ml-1 text-link" />
+                          <RefreshCw className="w-3 h-3 animate-spin ml-1 text-accent" />
                         )}
                       </button>
 
-                      <span className="text-xs text-subtle">ID: {model.id}</span>
+                      <span className="text-xs font-mono text-subtle/80">ID: {model.id}</span>
                     </div>
 
                     {/* Memory needed per context size */}
                     {isRecOpen && (
-                      <div className="mt-2 p-3 bg-canvas border border-line rounded-md space-y-2.5">
+                      <div className="mt-2 p-3.5 bg-canvas/90 border border-line/60 rounded-xl space-y-3 animate-slide-up">
                         <div className="flex items-center justify-between text-xs text-fg">
-                          <span className="font-medium flex items-center gap-1.5 text-fg">
-                            <Cpu className="w-3.5 h-3.5 text-link" />
+                          <span className="font-semibold flex items-center gap-1.5 text-fg">
+                            <Cpu className="w-3.5 h-3.5 text-accent" />
                             GPU memory needed per context size
                           </span>
                           {rec && (
                             <span className="text-xs text-muted">
-                              Free GPU memory: <strong className="text-fg">{Math.round(rec.available_vram_mb)} MB</strong>
+                              Free GPU memory: <strong className="text-fg font-mono">{Math.round(rec.available_vram_mb)} MB</strong>
                             </span>
                           )}
                         </div>
 
                         {rec?.estimate_status === "UNAVAILABLE" ? (
-                          <div className="p-2.5 bg-panel border border-line rounded-lg text-xs text-muted">
+                          <div className="p-3 bg-panel/70 border border-line/60 rounded-xl text-xs text-muted">
                             {rec.reason || "Context estimation unavailable for this architecture."}
                           </div>
                         ) : rec?.recommendations ? (
@@ -541,21 +541,21 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                             {Object.entries(rec.recommendations).map(([ctx, info]) => (
                               <div
                                 key={ctx}
-                                className="bg-canvas border border-line rounded-lg p-2.5 space-y-1.5"
+                                className="bg-panel/60 border border-line/60 rounded-xl p-2.5 space-y-1.5 shadow-sm"
                               >
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs font-mono font-medium text-fg">
+                                  <span className="text-xs font-mono font-semibold text-fg">
                                     {Number(ctx).toLocaleString()} ctx
                                   </span>
                                   <span
-                                    className={`text-xs font-semibold px-1.5 py-0.5 rounded border ${getTierColor(
+                                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border ${getTierColor(
                                       info.risk_classification
                                     )}`}
                                   >
                                     {info.risk_classification.replace(/_/g, " ")}
                                   </span>
                                 </div>
-                                <div className="text-xs text-muted space-y-0.5 font-mono">
+                                <div className="text-[11px] text-muted space-y-0.5 font-mono">
                                   <div className="flex justify-between">
                                     <span>Weights:</span>
                                     <span className="text-fg">{info.estimated_weights_gpu_mb ?? info.weights_vram_mb} MB</span>
@@ -572,12 +572,12 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                                     <span>Driver:</span>
                                     <span className="text-fg">{info.estimated_driver_reserve_mb ?? 250} MB</span>
                                   </div>
-                                  <div className="flex justify-between border-t border-line pt-0.5">
+                                  <div className="flex justify-between border-t border-line/50 pt-0.5">
                                     <span>Est. Total:</span>
-                                    <span className="text-link font-semibold">{info.estimated_vram_total_mb} MB</span>
+                                    <span className="text-accent font-semibold">{info.estimated_vram_total_mb} MB</span>
                                   </div>
                                   {info.measured_model_vram_mb != null && (
-                                    <div className="flex justify-between text-success border-t border-success/40 pt-0.5">
+                                    <div className="flex justify-between text-emerald-400 border-t border-emerald-500/30 pt-0.5">
                                       <span>Measured:</span>
                                       <span>{info.measured_model_vram_mb} MB</span>
                                     </div>
@@ -592,8 +592,8 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                           </div>
                         )}
 
-                        <div className="flex items-center gap-1.5 text-xs text-subtle italic pt-1">
-                          <Info className="w-3 h-3 shrink-0 text-subtle" />
+                        <div className="flex items-center gap-1.5 text-[11px] text-subtle italic pt-1">
+                          <Info className="w-3 h-3 shrink-0 text-accent/80" />
                           <span>
                             {rec?.disclaimer ||
                               "An estimate; the real use is shown after the model loads."}
@@ -609,16 +609,16 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3 border-t border-line bg-canvas flex items-center justify-between text-xs text-subtle">
+        <div className="px-6 py-3 border-t border-line/50 bg-panel/60 flex items-center justify-between text-xs text-subtle">
           <div className="flex items-center gap-2">
             <span>Storage Directory:</span>
-            <code className="text-muted font-mono text-xs bg-raised px-2 py-0.5 rounded border border-line">
+            <code className="text-muted font-mono text-xs bg-raised/80 px-2 py-0.5 rounded-lg border border-line/60">
               models/
             </code>
           </div>
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded-lg text-xs font-medium bg-raised hover:bg-raised text-fg transition"
+            className="px-4 py-1.5 rounded-xl text-xs font-medium bg-raised/80 hover:bg-raised text-fg border border-line/60 transition-all shadow-sm"
           >
             Close
           </button>
@@ -629,10 +629,10 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
 
       {/* Delete Confirmation Modal */}
       {modelToDelete && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60">
-          <div className="w-full max-w-md bg-panel border border-danger/40 rounded-lg p-6 shadow-menu space-y-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md bg-panel/95 backdrop-blur-xl border border-rose-500/40 rounded-2xl p-6 shadow-2xl space-y-4 animate-slide-up">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-md bg-danger/10 border border-danger/40 text-danger">
+              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
                 <ShieldAlert className="w-6 h-6" />
               </div>
               <div>
@@ -645,23 +645,23 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
               </div>
             </div>
 
-            <div className="bg-canvas border border-line rounded-md p-3 text-xs space-y-1 font-mono text-fg">
-              <div className="text-subtle text-xs">Filename:</div>
-              <div className="text-danger font-semibold truncate">{modelToDelete.filename}</div>
-              <div className="text-subtle text-xs pt-1">Size:</div>
+            <div className="bg-canvas/90 border border-line/60 rounded-xl p-3.5 text-xs space-y-1.5 font-mono text-fg">
+              <div className="text-subtle text-[11px]">Filename:</div>
+              <div className="text-rose-400 font-semibold truncate">{modelToDelete.filename}</div>
+              <div className="text-subtle text-[11px] pt-1">Size:</div>
               <div>{modelToDelete.file_size_gb} GB ({modelToDelete.file_size_bytes.toLocaleString()} bytes)</div>
             </div>
 
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => setModelToDelete(null)}
-                className="px-4 py-2 rounded-md text-xs font-medium bg-raised hover:bg-raised text-fg border border-line transition"
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-raised/80 hover:bg-raised text-fg border border-line/70 transition-all"
               >
                 Cancel
               </button>
               <button
                 onClick={handleConfirmDelete}
-                className="px-4 py-2 rounded-md text-xs font-medium bg-danger hover:bg-danger text-fg font-semibold transition"
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow-glow-sm transition-all"
               >
                 Permanently Delete
               </button>

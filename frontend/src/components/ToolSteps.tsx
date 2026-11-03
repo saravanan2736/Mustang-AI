@@ -27,16 +27,16 @@ function argumentSummary(raw: string): string {
 
 /** Unified diff with added lines green and removed lines red. */
 const DiffView: React.FC<{ diff: string }> = ({ diff }) => (
-  <pre className="max-h-64 overflow-auto rounded-md bg-canvas border border-line p-2 font-mono text-xs leading-snug">
+  <pre className="max-h-64 overflow-auto rounded-xl bg-canvas/90 border border-line/60 p-3 font-mono text-xs leading-snug">
     {diff.split("\n").map((line, i) => {
       const cls = line.startsWith("+++") || line.startsWith("---")
         ? "text-subtle"
         : line.startsWith("+")
-        ? "text-success bg-success/10"
+        ? "text-emerald-400 bg-emerald-500/10 px-1 rounded"
         : line.startsWith("-")
-        ? "text-danger bg-danger/10"
+        ? "text-rose-400 bg-rose-500/10 px-1 rounded"
         : line.startsWith("@@")
-        ? "text-subtle"
+        ? "text-accent/80 font-semibold"
         : "text-muted";
       return (
         <div key={i} className={`whitespace-pre-wrap break-words ${cls}`}>
@@ -58,11 +58,11 @@ interface ToolStepsProps {
 
 const StatusIcon: React.FC<{ status: AgentStep["status"] }> = ({ status }) =>
   status === "running" ? (
-    <Loader2 className="w-3.5 h-3.5 text-muted animate-spin shrink-0" />
+    <Loader2 className="w-3.5 h-3.5 text-accent animate-spin shrink-0" />
   ) : status === "awaiting" ? (
     <FilePen className="w-3.5 h-3.5 text-warning shrink-0" />
   ) : status === "ok" ? (
-    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
   ) : status === "denied" ? (
     <Ban className="w-3.5 h-3.5 text-subtle shrink-0" />
   ) : (
@@ -71,7 +71,7 @@ const StatusIcon: React.FC<{ status: AgentStep["status"] }> = ({ status }) =>
 
 /** Tool steps of an agent-mode reply, one collapsible card per call. */
 export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes, onApprove, onUndo }) => (
-  <div className="space-y-1.5 mb-3 not-prose">
+  <div className="space-y-2 mb-3.5 not-prose">
     {steps.map((s) => {
       const summary = argumentSummary(s.arguments);
       const isChange = CHANGE_TOOLS.has(s.name);
@@ -80,30 +80,32 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
       if (s.status === "awaiting") {
         // A proposed file change: always open, with the diff and the two answers.
         return (
-          <div key={s.call_id} className="rounded-md border border-warning/50 bg-panel p-3 space-y-2">
+          <div key={s.call_id} className="rounded-2xl border border-warning/40 bg-panel/85 backdrop-blur-md p-4 space-y-3 shadow-lg">
             {s.note && <p className="text-[13px] text-muted">{s.note}</p>}
             <div className="flex items-center gap-2 text-[13px] text-fg">
               <StatusIcon status={s.status} />
               <span className="font-semibold">{s.summary || `${TOOL_LABELS[s.name] ?? s.name} ${summary}`}</span>
-              <span className="ml-auto text-xs text-warning">waiting for you</span>
+              <span className="ml-auto text-xs font-medium text-warning px-2 py-0.5 rounded-full bg-warning/10 border border-warning/30">
+                Action Required
+              </span>
             </div>
             {s.diff && <DiffView diff={s.diff} />}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => onApprove?.(s.call_id, true)}
-                className="h-7 px-3 rounded-md bg-accent hover:bg-accent-hover text-white text-xs font-medium"
+                className="h-7 px-3.5 rounded-xl btn-violet text-white text-xs font-medium shadow-glow-sm hover:brightness-110 transition-all"
               >
                 Approve change
               </button>
               <button
                 type="button"
                 onClick={() => onApprove?.(s.call_id, false)}
-                className="h-7 px-3 rounded-md border border-line hover:bg-raised text-fg text-xs font-medium"
+                className="h-7 px-3.5 rounded-xl border border-line/70 hover:bg-raised/80 text-fg text-xs font-medium transition-all"
               >
                 Deny
               </button>
-              <span className="text-xs text-subtle">Nothing is written unless you approve.</span>
+              <span className="text-xs text-subtle ml-1">Nothing is written unless you approve.</span>
             </div>
           </div>
         );
@@ -112,8 +114,8 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
       return (
         <div key={s.call_id}>
           {s.note && <p className="text-[13px] text-muted mb-1">{s.note}</p>}
-          <details className="group/step rounded-md border border-line bg-panel">
-            <summary className="flex items-center gap-2 h-8 px-2.5 cursor-pointer list-none text-xs text-fg select-none">
+          <details className="group/step rounded-xl border border-line/60 bg-panel/70 backdrop-blur-sm overflow-hidden shadow-sm transition-colors">
+            <summary className="flex items-center gap-2 h-8 px-3 cursor-pointer list-none text-xs text-fg select-none hover:bg-raised/40 transition-colors">
               <ChevronRight className="w-3 h-3 text-subtle transition-transform group-open/step:rotate-90 shrink-0" />
               <StatusIcon status={s.status} />
               <span className="font-medium">
@@ -129,19 +131,19 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
                     e.preventDefault();
                     onUndo(s.call_id);
                   }}
-                  className="ml-1 flex items-center gap-1 h-6 px-1.5 rounded border border-line text-xs text-fg hover:bg-raised"
+                  className="ml-1 flex items-center gap-1 h-5 px-2 rounded-lg border border-line/70 text-xs text-fg hover:bg-raised/80"
                   title="Put back the previous version of this file"
                 >
                   <RotateCcw className="w-3 h-3" />
                   Undo
                 </button>
               )}
-              <span className="ml-auto text-xs text-subtle shrink-0">step {s.step}</span>
+              <span className="ml-auto text-[11px] font-mono text-subtle/80 shrink-0">step {s.step}</span>
             </summary>
-            <div className="px-3 pb-2.5 pt-1 space-y-1.5 text-xs border-t border-line-soft">
+            <div className="px-3.5 pb-3 pt-1.5 space-y-2 text-xs border-t border-line/40 bg-surface/50">
               <div>
                 <span className="text-subtle">Tool: </span>
-                <code className="font-mono text-fg">{s.name}</code>
+                <code className="font-mono text-accent">{s.name}</code>
                 {(!isChange || !s.diff) && (
                   <>
                     <span className="text-subtle"> with </span>
@@ -151,7 +153,7 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
               </div>
               {isChange && s.diff && <DiffView diff={s.diff} />}
               {s.result !== undefined && (
-                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-md bg-canvas border border-line p-2 font-mono text-xs text-muted">
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-canvas/90 border border-line/60 p-2.5 font-mono text-xs text-muted">
                   {s.result}
                 </pre>
               )}

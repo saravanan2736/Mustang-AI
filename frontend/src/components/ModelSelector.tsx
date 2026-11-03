@@ -1,13 +1,20 @@
 import React, { useState, useEffect } from "react";
-import { ChevronDown, Library, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, Library, Loader2, RefreshCw, SlidersHorizontal } from "lucide-react";
 import { EngineStatus, MemoryEstimateResult, ModelContextRecommendation, ModelInfo } from "../types";
 import { fetchContextRecommendation, fetchModelEstimate, fetchModels, loadModel, unloadModel } from "../services/api";
 import { ModelLibraryModal } from "./ModelLibraryModal";
+
+export type LibraryTab = "LOCAL" | "HF" | "DOWNLOADS";
 
 interface ModelSelectorProps {
   engineStatus: EngineStatus | null;
   onStatusChange: (status: EngineStatus) => void;
   onError: (err: string | null) => void;
+  /** Which library tab is open (null = closed); owned by the app so other places can open it. */
+  libraryTab: LibraryTab | null;
+  onLibraryTabChange: (tab: LibraryTab | null) => void;
+  /** Extra controls at the right end of the header row. */
+  trailing?: React.ReactNode;
 }
 
 const CONTEXT_PRESETS = [2048, 4096, 8192, 16384, 32768];
@@ -29,13 +36,20 @@ const FIT_TEXT: Record<string, { text: string; cls: string }> = {
 
 const gb = (mb: number, digits = 1) => `${(mb / 1024).toFixed(digits)} GB`;
 
+export const pillCls =
+  "h-9 px-3 flex items-center gap-1.5 rounded-xl bg-panel/70 border border-line/60 text-[13px] font-medium text-fg hover:bg-raised/80 hover:border-accent/40 backdrop-blur-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed";
 const selectCls =
-  "h-8 bg-canvas border border-line rounded-md px-2 text-[13px] text-fg focus:outline-none focus:border-accent disabled:opacity-50";
-const buttonCls =
-  "h-8 px-3 rounded-md text-[13px] font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  "h-9 rounded-xl bg-panel/80 border border-line/60 px-3 text-[13px] font-medium text-fg focus:outline-none focus:border-accent/70 focus:ring-1 focus:ring-accent/30 backdrop-blur-sm shadow-sm transition-all disabled:opacity-50";
 
-/** Model toolbar: pick, load, switch or unload a model; details on demand. */
-export const ModelSelector: React.FC<ModelSelectorProps> = ({ engineStatus, onStatusChange, onError }) => {
+/** Header row of the main panel: pick, load, switch or unload a model; details on demand. */
+export const ModelSelector: React.FC<ModelSelectorProps> = ({
+  engineStatus,
+  onStatusChange,
+  onError,
+  libraryTab,
+  onLibraryTabChange,
+  trailing,
+}) => {
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>("");
   const [gpuLayers, setGpuLayers] = useState<number>(99);
@@ -44,7 +58,6 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ engineStatus, onSt
   const [contextRec, setContextRec] = useState<ModelContextRecommendation | null>(null);
   const [loadingModels, setLoadingModels] = useState<boolean>(false);
   const [actionInProgress, setActionInProgress] = useState<boolean>(false);
-  const [isLibraryOpen, setIsLibraryOpen] = useState<boolean>(false);
   const [showDetails, setShowDetails] = useState<boolean>(false);
 
   const state = engineStatus?.state;
@@ -136,19 +149,19 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ engineStatus, onSt
     : state === "ERROR"
     ? "Engine error"
     : isModelLoaded
-    ? `Loaded · ${gb(engineStatus?.vram_allocated_mb ?? 0)} on GPU`
+    ? `${gb(engineStatus?.vram_allocated_mb ?? 0)} on GPU`
     : "No model loaded";
 
   const fit = estimate?.estimate_available ? FIT_TEXT[estimate.fit_status] : undefined;
 
   return (
-    <section className="border-b border-line bg-canvas">
-      <div className="h-12 px-4 flex items-center gap-2">
+    <section className="shrink-0">
+      <div className="h-14 px-4 flex items-center gap-1.5 xl:gap-2">
         <select
           value={selectedModel}
           onChange={(e) => setSelectedModel(e.target.value)}
           disabled={busy}
-          className={`${selectCls} min-w-0 flex-1 max-w-[420px]`}
+          className={`${selectCls} min-w-[150px] w-[320px] shrink`}
           aria-label="Model"
         >
           {models.length === 0 ? (
@@ -166,7 +179,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ engineStatus, onSt
           value={contextSize}
           onChange={(e) => setContextSize(Number(e.target.value))}
           disabled={busy}
-          className={`${selectCls} w-48`}
+          className={`${selectCls} w-[180px] shrink-0`}
           aria-label="Context size"
           title="Context window (tokens)"
         >
@@ -174,7 +187,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ engineStatus, onSt
             const tier = contextRec?.recommendations?.[String(preset)]?.risk_classification;
             return (
               <option key={preset} value={preset}>
-                {preset.toLocaleString()} tokens{tier && TIER_TEXT[tier] ? ` · ${TIER_TEXT[tier]}` : ""}
+                {preset.toLocaleString()} context{tier && TIER_TEXT[tier] ? ` · ${TIER_TEXT[tier]}` : ""}
               </option>
             );
           })}
@@ -184,54 +197,46 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ engineStatus, onSt
           <button
             onClick={handleLoadOrSwitch}
             disabled={!selectedModel || busy}
-            className={`${buttonCls} bg-accent hover:bg-accent-hover text-white flex items-center gap-1.5`}
+            className="h-9 px-4 flex items-center gap-1.5 rounded-xl btn-violet text-white text-[13px] font-medium shadow-glow-sm hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {(actionInProgress || isStarting) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {isDifferentFromActive ? "Switch" : "Load"}
           </button>
         )}
         {isModelLoaded && (
-          <button
-            onClick={handleUnload}
-            disabled={busy}
-            className={`${buttonCls} border border-line text-fg hover:bg-raised`}
-          >
+          <button onClick={handleUnload} disabled={busy} className={pillCls}>
             Unload
           </button>
         )}
 
-        <span className={`text-xs truncate ${state === "ERROR" ? "text-danger" : "text-muted"}`}>{statusText}</span>
+        <span className={`hidden 2xl:inline text-xs font-medium truncate ${state === "ERROR" ? "text-danger" : "text-muted"}`}>
+          {statusText}
+        </span>
 
-        <div className="ml-auto flex items-center gap-1">
+        <div className="ml-auto flex items-center gap-1.5 xl:gap-2">
           <button
             onClick={refreshModelList}
             disabled={loadingModels || busy}
-            className="h-8 w-8 flex items-center justify-center rounded-md text-muted hover:text-fg hover:bg-raised transition-colors disabled:opacity-50"
+            className="h-9 w-9 flex items-center justify-center rounded-xl bg-panel/70 border border-line/60 text-muted hover:text-fg hover:bg-raised/80 hover:border-accent/40 transition-all disabled:opacity-50 shadow-sm"
             title="Refresh the model list"
             aria-label="Refresh the model list"
           >
-            <RefreshCw className={`w-4 h-4 ${loadingModels ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${loadingModels ? "animate-spin text-accent" : ""}`} />
           </button>
-          <button
-            onClick={() => setIsLibraryOpen(true)}
-            className={`${buttonCls} text-muted hover:text-fg hover:bg-raised flex items-center gap-1.5`}
-          >
-            <Library className="w-4 h-4" />
-            Library
+          <button onClick={() => onLibraryTabChange("LOCAL")} className={pillCls} title="Model library">
+            <span className="hidden xl:inline">Library</span>
+            <Library className="w-4 h-4 text-accent/80" />
           </button>
-          <button
-            onClick={() => setShowDetails(!showDetails)}
-            aria-expanded={showDetails}
-            className={`${buttonCls} text-muted hover:text-fg hover:bg-raised flex items-center gap-1`}
-          >
-            Details
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform ${showDetails ? "rotate-180" : ""}`} />
+          <button onClick={() => setShowDetails(!showDetails)} aria-expanded={showDetails} className={pillCls} title="Model details">
+            <span className="hidden xl:inline">Details</span>
+            {showDetails ? <ChevronDown className="w-4 h-4 text-accent/80 rotate-180 transition-transform" /> : <SlidersHorizontal className="w-4 h-4 text-muted" />}
           </button>
+          {trailing}
         </div>
       </div>
 
       {showDetails && (
-        <div className="px-4 pb-3 grid grid-cols-1 md:grid-cols-[260px_1fr] gap-x-8 gap-y-3 text-xs">
+        <div className="mx-4 mb-2 p-4 rounded-2xl bg-panel/70 backdrop-blur-md border border-line/60 shadow-lg grid grid-cols-1 md:grid-cols-[240px_1fr] gap-x-8 gap-y-3 text-xs animate-slide-up">
           <div>
             <label htmlFor="gpu-layers" className="flex justify-between text-muted mb-1">
               <span>Layers on GPU</span>
@@ -247,16 +252,16 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ engineStatus, onSt
               value={gpuLayers}
               onChange={(e) => setGpuLayers(Number(e.target.value))}
               disabled={busy}
-              className="w-full accent-[rgb(var(--accent))] disabled:opacity-50"
+              className="w-full"
             />
           </div>
 
           <div className="space-y-1 text-muted">
             {estimate?.estimate_available ? (
               <p>
-                Estimated GPU memory{" "}
-                <span className="text-fg tabular-nums">{gb(estimate.total_estimated_vram_mb)}</span> (model{" "}
-                {gb(estimate.weights_gpu_mb)}, context {gb(estimate.kv_cache_gpu_mb, 2)}), {gb(estimate.vram_headroom_mb, 2)} left
+                Estimated GPU memory <span className="text-fg tabular-nums">{gb(estimate.total_estimated_vram_mb)}</span>{" "}
+                (model {gb(estimate.weights_gpu_mb)}, context {gb(estimate.kv_cache_gpu_mb, 2)}),{" "}
+                {gb(estimate.vram_headroom_mb, 2)} left
                 {fit && (
                   <>
                     {" — "}
@@ -283,9 +288,10 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({ engineStatus, onSt
       )}
 
       <ModelLibraryModal
-        isOpen={isLibraryOpen}
+        isOpen={libraryTab !== null}
+        initialTab={libraryTab ?? "LOCAL"}
         onClose={() => {
-          setIsLibraryOpen(false);
+          onLibraryTabChange(null);
           refreshModelList();
         }}
         engineStatus={engineStatus}

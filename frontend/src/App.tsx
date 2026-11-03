@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
-import { StatusBar } from "./components/StatusBar";
+import { HeaderActions } from "./components/StatusBar";
 import { Sidebar } from "./components/Sidebar";
-import { ModelSelector } from "./components/ModelSelector";
+import { LibraryTab, ModelSelector } from "./components/ModelSelector";
+import { StartScreen } from "./components/StartScreen";
 import { ChatInterface } from "./components/ChatInterface";
 import { PromptInput } from "./components/PromptInput";
 import { ErrorBanner } from "./components/ErrorBanner";
@@ -44,6 +45,8 @@ export default function App() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<LibraryTab | null>(null);
+  const [externalPrompt, setExternalPrompt] = useState<string | undefined>();
 
   // Agent mode of the open chat (saved per conversation; a new chat starts with it off)
   const [agentEnabled, setAgentEnabled] = useState(false);
@@ -313,6 +316,30 @@ export default function App() {
   const activeError = errorMessage || streamError || engineStatus?.error_message || null;
   const isReady = engineStatus?.state === "READY";
 
+  const composer = (
+    <PromptInput
+      onSend={handleSendPrompt}
+      onStop={stopStream}
+      isGenerating={isGenerating}
+      disabled={!isReady && !isGenerating}
+      placeholder={isReady || isGenerating || engineStatus?.state === "GENERATING" ? "Ask anything…" : "Load a model to start"}
+      externalPrompt={externalPrompt}
+      onExternalPromptConsumed={() => setExternalPrompt(undefined)}
+      large={messages.length === 0}
+      toolbar={
+        <AgentBar
+          enabled={agentEnabled}
+          workspace={workspace}
+          modelName={engineStatus?.model_name}
+          disabled={isGenerating}
+          onToggle={handleToggleAgent}
+          onChooseWorkspace={handleChooseWorkspace}
+          onClearWorkspace={handleClearWorkspace}
+        />
+      }
+    />
+  );
+
   return (
     <div className="flex h-screen bg-canvas text-fg overflow-hidden">
       <Sidebar
@@ -324,54 +351,57 @@ export default function App() {
         onDeleteConversation={handleDeleteConversation}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        telemetry={telemetry}
+        engineStatus={engineStatus}
+        tokensPerSec={tokensPerSec}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <StatusBar
-          telemetry={telemetry}
-          engineStatus={engineStatus}
-          tokensPerSec={tokensPerSec}
-          activeProfile={activeProfile}
-          profiles={profiles}
-          onSelectProfile={setActiveProfile}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-        />
-        <ModelSelector engineStatus={engineStatus} onStatusChange={setEngineStatus} onError={setErrorMessage} />
-        <ErrorBanner error={activeError} onDismiss={() => setErrorMessage(null)} />
-
-        <main className="flex-1 flex flex-col min-h-0">
-          <ChatInterface
-            messages={messages}
-            isGenerating={isGenerating}
-            onRegenerate={handleRegenerate}
-            onEditMessage={handleEditMessage}
-            activeModelName={engineStatus?.model_name}
-            agentChanges={agentChanges}
-            onApproveChange={handleApproveChange}
-            onUndoChange={handleUndoChange}
+      <div className="flex-1 min-w-0 p-2 sm:p-2.5">
+        <div className="main-glow h-full rounded-2xl border border-line/70 flex flex-col overflow-hidden shadow-2xl relative">
+          <ModelSelector
+            engineStatus={engineStatus}
+            onStatusChange={setEngineStatus}
+            onError={setErrorMessage}
+            libraryTab={libraryTab}
+            onLibraryTabChange={setLibraryTab}
+            trailing={
+              <HeaderActions
+                activeProfile={activeProfile}
+                profiles={profiles}
+                onSelectProfile={setActiveProfile}
+                onOpenSettings={() => setIsSettingsOpen(true)}
+              />
+            }
           />
+          <ErrorBanner error={activeError} onDismiss={() => setErrorMessage(null)} />
 
-          <div className="shrink-0 px-6 pb-4 pt-2">
-            <div className="max-w-3xl mx-auto">
-              <AgentBar
-                enabled={agentEnabled}
-                workspace={workspace}
-                modelName={engineStatus?.model_name}
-                disabled={isGenerating}
-                onToggle={handleToggleAgent}
-                onChooseWorkspace={handleChooseWorkspace}
-                onClearWorkspace={handleClearWorkspace}
-              />
-              <PromptInput
-                onSend={handleSendPrompt}
-                onStop={stopStream}
+          {messages.length === 0 ? (
+            <StartScreen
+              modelName={isReady || isGenerating ? engineStatus?.model_name : null}
+              agentEnabled={agentEnabled}
+              composer={composer}
+              onQuickPrompt={setExternalPrompt}
+              onEnableAgent={() => handleToggleAgent(true)}
+              onOpenLibrary={setLibraryTab}
+            />
+          ) : (
+            <main className="flex-1 flex flex-col min-h-0">
+              <ChatInterface
+                messages={messages}
                 isGenerating={isGenerating}
-                disabled={!isReady && !isGenerating}
-                placeholder={isReady ? "Message" : "Load a model to start"}
+                onRegenerate={handleRegenerate}
+                onEditMessage={handleEditMessage}
+                activeModelName={engineStatus?.model_name}
+                agentChanges={agentChanges}
+                onApproveChange={handleApproveChange}
+                onUndoChange={handleUndoChange}
               />
-            </div>
-          </div>
-        </main>
+              <div className="shrink-0 px-6 pb-5 pt-2">
+                <div className="max-w-3xl mx-auto">{composer}</div>
+              </div>
+            </main>
+          )}
+        </div>
       </div>
 
       <SettingsModal

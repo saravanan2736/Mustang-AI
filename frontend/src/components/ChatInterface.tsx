@@ -20,7 +20,7 @@ interface ChatInterfaceProps {
 }
 
 const actionCls =
-  "h-7 px-1.5 flex items-center gap-1 rounded-md text-xs text-subtle hover:text-fg hover:bg-raised transition-colors";
+  "h-7 px-2 flex items-center gap-1 rounded-lg text-xs text-subtle hover:text-fg hover:bg-raised/80 hover:border-line/60 border border-transparent transition-all";
 
 const markdownComponents = {
   code({ className, children, ...props }: React.ComponentProps<"code">) {
@@ -28,7 +28,7 @@ const markdownComponents = {
     const isInline = !match && !String(children).includes("\n");
     if (isInline) {
       return (
-        <code className="px-1 py-0.5 rounded bg-raised font-mono text-[0.85em]" {...props}>
+        <code className="px-1.5 py-0.5 rounded-md bg-raised/80 border border-line/50 font-mono text-[0.85em] text-link" {...props}>
           {children}
         </code>
       );
@@ -87,7 +87,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           if (isUser) {
             const editing = editingMsgId === msg.id;
             return (
-              <div key={msg.id} className="group flex flex-col items-end">
+              <div key={msg.id} className="group flex flex-col items-end animate-fade-in">
                 {editing ? (
                   <div className="w-full max-w-[85%] space-y-2">
                     <textarea
@@ -95,12 +95,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                       onChange={(e) => setEditContent(e.target.value)}
                       rows={3}
                       autoFocus
-                      className="w-full bg-canvas border border-accent rounded-md p-2.5 text-[14px] text-fg focus:outline-none"
+                      className="w-full bg-panel/95 border border-accent/80 rounded-xl p-3 text-[14px] text-fg focus:outline-none shadow-glow-sm"
                     />
                     <div className="flex justify-end gap-2">
                       <button
                         onClick={() => setEditingMsgId(null)}
-                        className="h-7 px-2.5 rounded-md text-xs text-muted hover:text-fg hover:bg-raised"
+                        className="h-7 px-3 rounded-lg text-xs font-medium text-muted hover:text-fg hover:bg-raised"
                       >
                         Cancel
                       </button>
@@ -109,7 +109,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                           if (editContent.trim() && onEditMessage) onEditMessage(msg.id, editContent.trim());
                           setEditingMsgId(null);
                         }}
-                        className="h-7 px-2.5 rounded-md text-xs font-medium bg-accent hover:bg-accent-hover text-white"
+                        className="h-7 px-3 rounded-lg text-xs font-medium btn-violet text-white shadow-glow-sm hover:brightness-110"
                       >
                         Save and send
                       </button>
@@ -117,12 +117,12 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   </div>
                 ) : (
                   <>
-                    <div className="max-w-[85%] rounded-lg bg-raised px-3.5 py-2 text-[14px] leading-relaxed whitespace-pre-wrap break-words">
+                    <div className="max-w-[85%] rounded-2xl bg-panel/80 border border-line/70 px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap break-words shadow-sm text-fg">
                       {msg.content}
                     </div>
                     <div className="h-7 mt-0.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button onClick={() => copyToClipboard(msg.content, msg.id)} className={actionCls} title="Copy">
-                        {copiedId === msg.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                        {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                       </button>
                       {!isGenerating && onEditMessage && (
                         <button
@@ -144,7 +144,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
           }
 
           return (
-            <div key={msg.id} className="group">
+            <div key={msg.id} className="group animate-fade-in">
               {msg.steps?.length ? (
                 <ToolSteps
                   steps={msg.steps}
@@ -163,20 +163,24 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   {msg.content}
                 </ReactMarkdown>
                 {isStreaming && !toolRunning && (
-                  <span className="inline-block w-1.5 h-4 bg-muted align-text-bottom animate-pulse" aria-hidden />
+                  <span className="inline-block w-1.5 h-4 bg-accent align-text-bottom animate-pulse shadow-glow-sm ml-0.5 rounded-sm" aria-hidden />
                 )}
               </div>
               {!isStreaming && msg.content && (
-                <div className="h-7 mt-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="h-7 mt-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => copyToClipboard(msg.content, msg.id)} className={actionCls} title="Copy">
-                    {copiedId === msg.id ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                    {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                   {isLast && onRegenerate && (
                     <button onClick={onRegenerate} className={actionCls} title="Regenerate">
                       <RotateCcw className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {msg.token_count ? <span className="ml-1 text-xs text-subtle">{msg.token_count} tokens</span> : null}
+                  {msg.token_count ? (
+                    <span className="ml-1 text-[11px] font-mono text-subtle px-1.5 py-0.5 rounded bg-raised/50 border border-line/40">
+                      {msg.token_count} tokens
+                    </span>
+                  ) : null}
                 </div>
               )}
             </div>

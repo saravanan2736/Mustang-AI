@@ -5,25 +5,66 @@
 @tailwind utilities;
 
 /*
- * One dark palette ("Void Space"), as RGB triplets so Tailwind can apply opacity:
+ * Black and violet, as RGB triplets so Tailwind can apply opacity:
  * bg-panel, border-line, text-muted, bg-accent/10 ... (see tailwind.config.js).
  */
 :root {
-  --canvas: 13 17 23;        /* #0d1117  app background */
-  --panel: 22 27 34;         /* #161b22  sidebar, top bar, cards, menus */
-  --raised: 33 38 45;        /* #21262d  inputs, hover, user messages */
-  --line: 48 54 61;          /* #30363d  borders */
-  --line-soft: 33 38 45;     /* #21262d  dividers */
-  --fg: 230 237 243;         /* #e6edf3  text */
-  --muted: 139 148 158;      /* #8b949e  secondary text */
-  --subtle: 110 118 129;     /* #6e7681  hints, placeholders */
-  --accent: 31 111 235;      /* #1f6feb  primary buttons, focus */
-  --accent-hover: 56 139 253;/* #388bfd */
-  --link: 88 166 255;        /* #58a6ff */
-  --success: 63 185 80;      /* #3fb950 */
-  --warning: 210 153 34;     /* #d29922 */
-  --danger: 248 81 73;       /* #f85149 */
+  --canvas: 9 8 13;           /* #09080D  deep obsidian base */
+  --surface: 13 11 18;        /* #0D0B12  sidebar, secondary bg */
+  --panel: 21 18 27;          /* #15121B  cards, menus, prompt box */
+  --raised: 27 22 34;         /* #1B1622  inputs, hover, chips, user msgs */
+  --line: 50 44 58;           /* #322C3A  borders */
+  --line-soft: 35 30 42;      /* #231E2A  soft dividers */
+  --fg: 245 241 248;          /* #F5F1F8  primary text */
+  --muted: 165 156 170;       /* #A59CAA  secondary text */
+  --subtle: 113 106 121;      /* #716A79  hints, placeholders */
+  --accent: 168 85 247;       /* #A855F7  primary actions, focus */
+  --accent-hover: 139 92 246; /* #8B5CF6  hover / secondary accent */
+  --link: 196 181 253;        /* #C4B5FD  links */
+  --success: 74 222 128;      /* #4ade80 */
+  --warning: 251 191 36;      /* #fbbf24 */
+  --danger: 248 113 113;      /* #f87171 */
+
+  /* Obsidian Glass tokens */
+  --glass-bg: 255 255 255;
+  --glass-opacity: 0.035;
+  --glass-border-opacity: 0.08;
+  --glass-blur: 12px;
+
   color-scheme: dark;
+}
+
+/* Main panel: a soft violet glow from the top, fading into the surface colour. */
+.main-glow {
+  background:
+    radial-gradient(ellipse 75% 50% at 50% -5%, rgb(168 85 247 / 0.18), transparent 70%),
+    rgb(var(--surface));
+}
+
+/* Glass surfaces — the signature Obsidian Glass look. */
+.glass {
+  background: rgb(var(--glass-bg) / var(--glass-opacity));
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid rgb(var(--glass-bg) / var(--glass-border-opacity));
+}
+
+.glass-strong {
+  background: rgb(var(--glass-bg) / 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgb(var(--glass-bg) / 0.1);
+}
+
+/* The glossy sphere on the start screen. */
+.orb {
+  background: radial-gradient(circle at 34% 28%, #faf5ff 0%, #d8b4fe 14%, #a855f7 40%, #581c87 70%, #1e0b3a 100%);
+  box-shadow: 0 0 56px rgb(168 85 247 / 0.5), inset -6px -8px 16px rgb(0 0 0 / 0.45);
+}
+
+/* Primary round button (send). */
+.btn-violet {
+  background: linear-gradient(180deg, #a855f7 0%, #7c3aed 100%);
 }
 
 @layer base {
@@ -34,6 +75,25 @@
 
   ::selection {
     background: rgb(var(--accent) / 0.4);
+  }
+
+  input[type="range"] {
+    accent-color: rgb(var(--accent));
+    height: 4px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgb(var(--raised));
+    border-radius: 2px;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgb(var(--accent-hover));
+    border: 2px solid rgb(var(--surface));
   }
 
   :focus-visible {
@@ -57,6 +117,15 @@
 
   ::-webkit-scrollbar-thumb:hover {
     background: rgb(var(--subtle));
+  }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
