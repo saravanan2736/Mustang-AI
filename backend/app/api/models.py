@@ -260,15 +260,15 @@ async def get_model_detail(model_id: str):
 
 # --- Backwards Compatible Endpoints (Milestones 1 & 2) ---
 
-@router.get("", response_model=list[ModelInfo])
-async def list_models():
-    """Scans the designated models directory and returns discovered GGUF files."""
-    models: list[ModelInfo] = []
+def _listed_model_files() -> list[Path]:
+    """
+    The GGUF files the model menu shows: the models folder and its subfolders (downloads are
+    stored per repository), except hidden folders such as .downloads. A file name is listed
+    once; when two subfolders hold the same name, the first in sorted order wins.
+    """
     if not settings.MODELS_DIR.exists():
-        return models
-
-    # Include models in subfolders (downloads are stored per repository), but not hidden
-    # folders such as .downloads; a file name already listed is not repeated.
+        return []
+    files: list[Path] = []
     seen_names: set[str] = set()
     for file_path in sorted(settings.MODELS_DIR.rglob("*.gguf")):
         folders = file_path.relative_to(settings.MODELS_DIR).parts[:-1]
@@ -276,19 +276,28 @@ async def list_models():
             continue
         seen_names.add(file_path.name)
         if file_path.is_file():
-            stat = file_path.stat()
-            size_mb = round(stat.st_size / (1024 * 1024), 2)
-            size_gb = round(stat.st_size / (1024 * 1024 * 1024), 2)
-            models.append(
-                ModelInfo(
-                    name=file_path.stem,
-                    filename=file_path.name,
-                    path=str(file_path),
-                    size_mb=size_mb,
-                    size_gb=size_gb,
-                    modified_time=stat.st_mtime,
-                )
+            files.append(file_path)
+    return files
+
+
+@router.get("", response_model=list[ModelInfo])
+async def list_models():
+    """Scans the designated models directory and returns discovered GGUF files."""
+    models: list[ModelInfo] = []
+    for file_path in _listed_model_files():
+        stat = file_path.stat()
+        size_mb = round(stat.st_size / (1024 * 1024), 2)
+        size_gb = round(stat.st_size / (1024 * 1024 * 1024), 2)
+        models.append(
+            ModelInfo(
+                name=file_path.stem,
+                filename=file_path.name,
+                path=str(file_path),
+                size_mb=size_mb,
+                size_gb=size_gb,
+                modified_time=stat.st_mtime,
             )
+        )
 
     return sorted(models, key=lambda m: m.name)
 
@@ -329,6 +338,11 @@ async def resolve_model_reference(reference: str) -> Path:
         matches = [m for m in await model_library.get_all_models() if m["filename"] == reference]
         if len(matches) == 1:
             return security.validate_model_path(matches[0]["canonical_path"])
+        # A file copied into a subfolder by hand is listed but not in the library: load the
+        # same file the menu shows for that name.
+        listed = [f for f in _listed_model_files() if f.name == reference]
+        if listed:
+            return security.validate_model_path(str(listed[0]))
     return security.validate_model_path(reference)
 
 
