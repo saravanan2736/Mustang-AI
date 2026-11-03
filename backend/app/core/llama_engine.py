@@ -134,8 +134,11 @@ class LlamaServerEngine(InferenceEngine):
             logger.info(f"Stopping previous model process PID {self._process.pid}...")
             await self._stop_process_internal()
 
-        # Step 5: Windows TCP socket release cooldown
-        await asyncio.sleep(0.3)
+        # Step 5: no cooldown before respawning. Our connections are closed before the old server
+        # is stopped, so the port can be bound again at once (55 back-to-back switches on one port,
+        # some mid-generation: no bind failure). A delay also made CUDA start-up slower: llama-server
+        # started >= 0.3 s after the previous one exited took ~600 ms to its first output line
+        # instead of ~190 ms (M4 Phase G).
 
         # Step 6 & 7: Spawn new process and wait for readiness
         success = await self._spawn_and_verify(config)
@@ -347,6 +350,9 @@ class LlamaServerEngine(InferenceEngine):
         if self._stdout_task:
             self._stdout_task.cancel()
             self._stdout_task = None
+        # Close our connections before the server goes away, so TIME_WAIT stays on our
+        # ephemeral ports and the engine port can be bound again at once.
+        await self._close_http()
 
         if self._process:
             if self._process.returncode is None:
@@ -373,7 +379,6 @@ class LlamaServerEngine(InferenceEngine):
                 except Exception:
                     pass
 
-        await self._close_http()
         self._process = None
         self._state = EngineState.UNLOADED
         self._config = None
