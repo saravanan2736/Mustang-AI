@@ -12,11 +12,11 @@ Environment: E1 (i7-13620H, RTX 5050 Laptop 8 GB, driver 617.42, 24 GB RAM, Wind
 | G2 Automated | **Pass** | §6 |
 | G3 Data safety | **Pass on E1** (scenarios 2–6 in Phase F; 1 on E1 only) | Phase F test report §2–6; legacy import in Phase E |
 | G4 Security | **Pass** | §2 |
-| G5 Performance | **Pass for throughput**; switch latency 1.8 s vs a 1.0 s baseline that could not be reproduced (improved by 140 ms here) | §4 |
+| G5 Performance | **Pass for throughput**; switch latency ~1.5 s median (1.0–1.6 s) vs a 1.0 s baseline that could not be reproduced (was 1.95 s at the start of Phase G) | §4 |
 | G6 Clean machine | **Not run: needs E2/E3** | §8 |
 | G7 Signing | **Not met: no certificate**. Signing pipeline ready (`scripts/sign.ps1`, `MUSTANG_SIGN_CERT_THUMBPRINT`); updater signature verification tested in Phase F with a test key | §8 |
 
-The release candidate is functionally ready on E1. The soak finding (stalls of 40–100 s and a step of the backend's memory to ~2.1 GB) was traced to piled-up memory-estimate requests, each re-parsing the whole GGUF file, and is **fixed** (§7.1): a 30-min soak on the installed RC ran 1,524 chats with no errors and no stalls. **Still open:** slow native memory growth of the backend in the desktop app, ~1 MB per load/chat cycle (§7.2); harmless in short sessions, but it fails the 4-h soak criterion until fixed. G6 and G7 need hardware and a certificate that are not available here; see §8 for what to run.
+The release candidate is functionally ready on E1. The soak finding (stalls of 40–100 s and a step of the backend's memory to ~2.1 GB) was traced to piled-up memory-estimate requests, each re-parsing the whole GGUF file, and is **fixed** (§7.1): a 30-min soak on the installed RC ran 1,524 chats with no errors and no stalls. The slow memory growth found next (~1 MB per load/chat cycle) was traced to garbage in reference cycles from per-request HTTP clients and the host-check middleware, and is **fixed** (§7.2). A 30-min desktop soak now grows ~0.13 MB per cycle instead of ~1.06. A small residual remains, and the 4-h soak hasn't been run. Switches got faster too (§4). G6 and G7 need hardware and a certificate that are not available here; see §8 for what to run.
 
 ## 2. Security checklist (release build, `src-tauri\target\release`)
 
@@ -75,7 +75,8 @@ Reference model `qwen2.5-0.5b-instruct-q4_k_m.gguf`, `tests/run_stage6_benchmark
 
 - Engine start alone (packaged b12000, spawn → `/health` 200, 0.5B model): **0.79 s** warm (2.3 s on the very first cold start), identical to the dev runtime (0.79–0.85 s). Packaging is not the cause.
 - Found: on Windows, a connect to a loopback port that is not listening yet is retried for ~1.1 s instead of being refused (measured: 1115–1191 ms per probe). The backend's readiness probe used a 1 s timeout and a 0.3 s interval, so the first probe always blocked past the moment the engine came up. **Fixed**: connect timeout 50 ms, interval 0.1 s (`llama_engine.py`). A/B with `switch_timing.py`: 1963/1959/1961 ms → 1820/1828/1809 and 1836/1792/1841 ms (−140 ms).
-- Remaining: in the backend, spawn → ready still takes ~1.4 s against 0.79 s standalone, plus 0.09 s stop and the 0.3 s socket cooldown. Not explained yet; candidates are the `-v` output volume (~400 KB at start-up) read by the output monitor, and the cooldown. Tracked as a follow-up; it does not affect chat speed.
+- Found next: the fixed **0.3 s socket cooldown** before respawning cost more than its own 0.3 s. llama-server's first output line (before CUDA init completes) comes ~190 ms after spawn when the previous one exited ≤ 0.1 s earlier, but ~600 ms after an idle gap of 0.3 s or more (`gap_test.py`, measured for gaps 0, 0.1, 0.3, 0.6, 1, 3 s). After the first line, output progresses at the same pace in the engine and standalone. Ruled out by measurement: the `-v` output (~400 KB, read in ~45 ms by any reader; standalone start is the same with and without `-v`, and without it the lines the output monitor parses for GPU layers and VRAM are not printed), the asyncio pipe reader, the readiness probe pattern, `LLAMA_API_KEY` and the parent's imports. **Fixed**: no cooldown; the engine closes its HTTP connections before stopping the server, so TIME_WAIT stays on its own ephemeral ports. 115 back-to-back switches on one fixed port with chats, some made mid-generation: **0 bind failures**. `switch_timing.py`: 1683–1781 ms → **998–1586 ms** (median ~1.5 s).
+- Still open: even with no gap, most spawns take ~1.4 s to ready and some ~0.8 s, with no pattern by idle versus mid-generation switch. This looks driver-level (CUDA start-up after a context teardown); not tracked further. It does not affect chat speed.
 - In the desktop app (installed RC): 1.5B load 2.3 s, switches 2.3–2.6 s; with the build machine busy (NSIS compressing) 1.9–2.1 s.
 
 ## 5. Download, resume and downloaded-model loading (release build)
@@ -99,13 +100,12 @@ Reference model `qwen2.5-0.5b-instruct-q4_k_m.gguf`, `tests/run_stage6_benchmark
 
 | Suite | Result |
 |---|---|
-| Backend pytest, dev venv | **161 passed** (151 + 10 new regression tests), repeated 4×: the only intermittent failure found (1 in ~8 runs of `test_conversation_crud_and_messages`) was the real bug in §3.2, now covered deterministically |
+| Backend pytest, dev venv | **162 passed** (151 + 11 new regression tests), repeated 4×: the only intermittent failure found (1 in ~8 runs of `test_conversation_crud_and_messages`) was the real bug in §3.2, now covered deterministically |
 | Backend pytest `-m gpu` (live CUDA inference, cancel, engine key, concurrency) | **5 passed** |
-| Backend pytest inside the embedded release runtime (`scripts/test_desktop_runtime.py`) | **161 passed** |
+| Backend pytest inside the embedded release runtime (`scripts/test_desktop_runtime.py`) | **162 passed** |
 | Rust unit tests (`src-tauri`, `cargo test --lib`) | **20 passed** |
 | Frontend `tsc --noEmit` | clean |
-| Data guard (model + `backend
-un\mustang.db` SHA-256) | unchanged after every step |
+| Data guard (model + `backend\run\mustang.db` SHA-256) | unchanged after every step |
 
 ## 7. Soak
 
@@ -182,17 +182,40 @@ A request-tracing ASGI middleware (logging start, end of body and duration of ev
 
 In the installed run, shell handles (366 → 358), backend handles (299 → 299), WebView (+3 %) and engine processes (max 1) are flat.
 
-### 7.2 Open: slow native memory growth in the desktop app (~1 MB per cycle)
+### 7.2 Root cause found and fixed: memory growth from reference-cycle garbage
 
-With the stalls gone, the backend's memory still rises **linearly by ~1.06 MB per soak cycle** (each cycle: one model load, 6 chats, the UI's polling). The rise shows in private bytes too (6-min run: 572 → 627 MB private, 106 → 160 MB working set), with threads (23–28) and handles (~300) flat. It does not level off within 30 min; at that rate the 4-h scripted soak would end near 2 GB and fail the plan's 10 % criterion. In normal use (a few model loads per session) it amounts to a few MB.
+With the stalls gone, the backend's memory still rose **linearly by ~1.06 MB per soak cycle** (each cycle: one model load, 6 chats, the UI's polling), in private bytes too, with threads and handles flat. At that rate the 4-h soak would have ended near 2 GB.
 
-What is known:
-- **Not Python objects:** tracemalloc sees ~14 MB of Python heap while the working set is ~200 MB, so the growth is native (C-level).
-- **Desktop only:** the same cycle driven directly over HTTP shows a sawtooth that falls back (≈ 75 → 110 → 82 MB around cycle 45) for the source backend, the embedded runtime, and the embedded runtime started through the real launcher with its logging (`mustang_launcher.py`, stdin held open). The launcher, logging and runtime are therefore ruled out.
-- **Not a single endpoint:** in isolation (300 calls each) estimate +12 KB per call, context recommendation 0, downloads 0, hardware 0, status 0. 60 engine start/stop cycles in one process: flat after `gc.collect()` (34–37 MB private), handles and object counts flat.
-- **Not per-request HTTP clients:** 1,500 health probes with a new `httpx.AsyncClient` each: +4 MB in total.
+**Reproduced without the WebView.** An isolated source backend (scratch run dir, its own ports), driven by a script that adds the UI's concurrent traffic to the soak cycle (status every 2.5 s, hardware every 2 s, downloads every 5 s, the download-progress SSE stream, `Origin` headers, two estimates per load), grew the same way: 594 → 676 MB private over 80 cycles. Without the extra traffic it was a sawtooth that fell back every ~40 cycles, which is why the earlier direct runs looked flat.
 
-Remaining differences between the desktop path and the direct runs: requests come from Chromium (keep-alive connection pool, CORS preflights, the long-lived download-progress SSE stream), and the UI's polling runs concurrently with loads. **Next step:** reproduce with a script that adds those one at a time to the direct soak (an open SSE stream on `/api/downloads/progress`, the UI's poll rates, `Origin` headers), and measure private bytes.
+**Mechanism.** A wrapper around the app logged Python's gc counters: during the whole run the backend did **no full (generation-2) collection** (11, all at start-up), while memory climbed. One forced `gc.collect()` freed 8,112 objects and dropped private bytes **669 → 589 MB** in 0.07 s. So the growth was garbage in reference cycles holding native memory, which Python 3.11 frees only on its rare full collections. That's why tracemalloc (Python heap ~14 MB) and the earlier single-endpoint tests missed it: a new client with no request, or calls followed by an explicit `gc.collect()`, look flat. A census of the cycle garbage (`gc.DEBUG_SAVEALL` over 150 s) showed two sources:
+
+| Source | In the garbage (150 s) | Fix |
+|---|---|---|
+| `llama_engine` created a new `httpx.AsyncClient` per readiness probe (every 0.1 s during a load), per health probe (every 2 s) and per chat; after a request each one ended up in a cycle through exception tracebacks | 324 complete clients, each with its own `SSLContext` and connection pool; 347 socket transports holding 21.7 MB of read buffers | **One client per llama-server process**, closed when the process stops (`_http`, `_close_http`) |
+| `HostValidationMiddleware` was a Starlette `BaseHTTPMiddleware`, which runs every request in an anyio task group and cancels it; the `CancelledError` tracebacks kept request frames alive | ~5,000 each of `TaskGroup`, `CancelScope`, `CancelledError`, `Task`, with 37k frames and 27k tracebacks | **Plain ASGI middleware** with the same checks |
+
+| Run (all UI traffic) | Private bytes | Per cycle |
+|---|---|---|
+| Isolated backend, before | 594 → 676 MB over 80 cycles | ~1.0 MB |
+| Isolated backend, client fix only | 573 → 640 MB over 120 cycles | ~0.55 MB |
+| Isolated backend, both fixes | 578 → 590 MB over 120 cycles | **~0.1 MB** |
+
+With both fixes the backend does far fewer young-generation collections (~26 against ~140 per minute), a sign much less garbage is made.
+
+**Desktop app, 30-min soak on the rebuilt release (`target\release`), same harness as §7.1:**
+
+| | Installed RC before the fix (§7.1) | After |
+|---|---|---|
+| Cycles / chats / errors | 254 / 1,524 / 0 | **341 / 2,046 / 0** (cycles are faster) |
+| Backend working set | 105 → 375 MB (~1.06 MB per cycle) | **103 → 147 MB (~0.13 MB per cycle)** |
+| Backend private bytes | rising linearly | 572 → ~615 MB |
+| Handles / threads / WebView | flat / flat / +3 % | flat / flat / +3 % |
+| Quit | Graceful | Graceful, no leftovers |
+
+The remaining ~0.13 MB per cycle is small but not zero. At the soak's rate of ~11 model loads per minute it would add ~0.35 GB over 4 h, so the scripted 4-h soak **would still likely miss the plan's 10 % criterion** for the backend (the criterion assumes no growth; in normal use, with a few loads per session, this is a few MB). It hasn't been tracked further; one candidate is the anyio task groups that Starlette's streaming responses still use. The 4-h soak (§8) has still to be run before release.
+
+Tests: `test_one_http_client_per_process_closed_on_stop` (one client across three chats, closed on stop); the existing host-check tests cover the middleware.
 
 ## 8. Not testable here: for the release owner
 
@@ -212,10 +235,10 @@ Remaining differences between the desktop path and the direct runs: requests com
 
 | Item | Value |
 |---|---|
-| File | `build\release\0.1.0\Mustang AI_0.1.0_x64-setup.exe` (578,052,030 bytes) |
-| SHA-256 | `2fc4f4d5b5aaa7b5d729538164fb1975ebc71fd2711bd6ef5792fdb35ed71df7` (also in `SHA256SUMS.txt`) |
-| Contents | all four Phase G fixes (§3.1, §3.2, the readiness probe in §4, the estimate cache in §7.1); unsigned; updater not configured |
-| Silent install | exit 0 in 45 s; engine integrity verified (31 files, 498 ms); the estimate fix is present in the installed backend |
-| Installed app | downloaded 1.5B model listed and loaded by file name (2327 ms), chat, switches 2.2–2.4 s, clean quit |
+| File | `build\release\0.1.0\Mustang AI_0.1.0_x64-setup.exe` (578,053,609 bytes) |
+| SHA-256 | `7228065c9330a5204356f32e32a42b001b8952a8dd61eb24f9f41f8319ae123f` (also in `SHA256SUMS.txt`) |
+| Contents | all Phase G fixes (§3.1, §3.2, the readiness probe and the cooldown in §4, the estimate cache in §7.1, the cycle-garbage fixes in §7.2); unsigned; updater not configured |
+| Silent install | exit 0 in 48 s |
+| Installed app, 15-min soak (§7 harness) | 181 cycles / 1,086 chats / **0 errors** (the previous RC ran ~127 cycles in 15 min); no bind failures or rollbacks in the logs; backend working set 104 → 119 MB (~0.08 MB per cycle), private 573 → 589 MB; handles flat; max 1 engine process; graceful quit, no leftovers |
 
-Superseded: `bc2a4273…2e43e` (before all fixes) and `89150d1c…b0ee` (before the estimate fix).
+Superseded: `bc2a4273…2e43e` (before all fixes), `89150d1c…b0ee` (before the estimate fix), `2fc4f4d5…1df7` (before the §7.2 and cooldown fixes; installed and verified: downloaded 1.5B model loaded by file name in 2327 ms, chat, switches 2.2–2.4 s, clean quit), and `1d0df021…91ea` (before the cooldown fix; used for the 30-min soak in §7.2 from `target\release`).

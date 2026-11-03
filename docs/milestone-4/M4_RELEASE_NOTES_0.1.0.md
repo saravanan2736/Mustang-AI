@@ -30,13 +30,14 @@ Run `Mustang AI_0.1.0_x64-setup.exe` (no administrator rights needed). This buil
 - Automatic updates are built in but not configured for this build (no update server); install new versions with the installer.
 - Each update downloads the full installer (~550 MB).
 - Tested on one machine (RTX 5050 Laptop); clean-machine, multi-GPU and older-GPU testing is still pending. See `M4_PHASEG_RELEASE_REPORT.md`.
-- Under investigation: the local engine host's memory grows by about 1 MB per model load during very long sessions with many loads. Restarting the app releases it.
+- The local engine host's memory still grows slightly with each model load (about 0.1 MB). This only matters in very long sessions with thousands of loads; restarting the app releases it.
 
 ## Fixed since the first release candidate
 
 - Models downloaded from Hugging Face are now listed in the model menu and can be loaded from the Library and the Download Queue (they previously failed with "Model file not found").
 - Regenerate and Edit no longer remove the wrong messages when two messages were saved within the same few milliseconds.
-- Switching models is slightly faster (about 0.15 s).
+- Switching models is faster: about 1.5 s instead of 1.95 s for a small model.
+- The local engine host no longer grows by about 1 MB of memory for every model load and chat round.
 - Fixed stalls of up to 100 s and memory use of up to ~2 GB after loading and unloading models or moving the context slider repeatedly: the memory estimate no longer re-reads the whole model file each time.
 
 See `docs/TROUBLESHOOTING.md` for help.
