@@ -14,7 +14,8 @@ logger = logging.getLogger("mustang.db")
 DB_PATH: Path = settings.RUN_DIR / "mustang.db"
 
 # Stored in PRAGMA user_version. v1 = the Milestone 3 schema (legacy databases report 0);
-# v2 = messages gain tool_calls / tool_call_id and the "tool" role (M5 agent mode).
+# v2 = messages gain tool_calls / tool_call_id and the "tool" role, conversations gain
+#      agent_enabled / workspace (M5 agent mode).
 # Bump when a migration is added; a backup is taken before migrating.
 SCHEMA_VERSION = 2
 BACKUP_KEEP = 5
@@ -234,6 +235,13 @@ async def init_db():
         for col_def in ["tool_calls TEXT", "tool_call_id TEXT"]:
             try:
                 await db.execute(f"ALTER TABLE messages ADD COLUMN {col_def};")
+                await db.commit()
+            except Exception:
+                pass
+        # ...and per-conversation agent mode with its workspace folder (M5 Phase D).
+        for col_def in ["agent_enabled INTEGER DEFAULT 0", "workspace TEXT"]:
+            try:
+                await db.execute(f"ALTER TABLE conversations ADD COLUMN {col_def};")
                 await db.commit()
             except Exception:
                 pass

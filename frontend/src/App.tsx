@@ -6,6 +6,10 @@ import { ChatInterface } from "./components/ChatInterface";
 import { PromptInput } from "./components/PromptInput";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { SettingsModal } from "./components/SettingsModal";
+import { AgentBar } from "./components/AgentBar";
+import { groupAgentMessages } from "./services/agent";
+import { isDesktop } from "./services/connection";
+import { chooseWorkspaceFolder } from "./services/desktop";
 import { useHardware } from "./hooks/useHardware";
 import { useChatStream } from "./hooks/useChatStream";
 import {
@@ -37,6 +41,11 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [externalPrompt, setExternalPrompt] = useState<string | undefined>();
+
+  // Agent mode of the open chat (saved per conversation; a new chat starts with it off)
+  const [agentEnabled, setAgentEnabled] = useState(false);
+  const [workspace, setWorkspace] = useState<string | null>(null);
+  const agentOptions = agentEnabled ? { workspace } : null;
 
   // Profiles and Settings
   const [profiles, setProfiles] = useState<AssistantProfile[]>([]);
@@ -125,7 +134,9 @@ export default function App() {
     try {
       setActiveConversationId(id);
       const detail = await fetchConversation(id);
-      setMessages(detail.messages);
+      setMessages(groupAgentMessages(detail.messages));
+      setAgentEnabled(Boolean(detail.agent_enabled));
+      setWorkspace(detail.workspace ?? null);
       // If conversation has a custom profile or system prompt, match profile
       if (detail.profile_id) {
         const matchingProfile = profiles.find((p) => p.id === detail.profile_id);
@@ -149,9 +160,45 @@ export default function App() {
       setConversations((prev) => [created, ...prev]);
       setActiveConversationId(created.id);
       setMessages([]);
+      setAgentEnabled(false);
+      setWorkspace(null);
     } catch (err) {
       console.error("Failed to create new conversation:", err);
     }
+  };
+
+  /** Save agent mode / workspace on the open chat (or keep them for the chat the next send creates). */
+  const saveAgentSettings = async (change: { agent_enabled?: boolean; workspace?: string }) => {
+    if (!activeConversationId) return true;
+    try {
+      await updateConversation(activeConversationId, change);
+      return true;
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not save agent settings");
+      return false;
+    }
+  };
+
+  const handleToggleAgent = async (enabled: boolean) => {
+    if (await saveAgentSettings({ agent_enabled: enabled })) setAgentEnabled(enabled);
+  };
+
+  const handleChooseWorkspace = async () => {
+    let folder: string | null = null;
+    try {
+      folder = isDesktop
+        ? await chooseWorkspaceFolder()
+        : window.prompt("Workspace folder for agent mode (full path, e.g. C:\\Users\\you\\Documents\\notes):", workspace ?? "");
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (!folder?.trim()) return;
+    if (await saveAgentSettings({ workspace: folder.trim() })) setWorkspace(folder.trim());
+  };
+
+  const handleClearWorkspace = async () => {
+    if (await saveAgentSettings({ workspace: "" })) setWorkspace(null);
   };
 
   const handleRenameConversation = async (id: string, newTitle: string) => {
@@ -192,6 +239,8 @@ export default function App() {
         model: engineStatus?.model_name || "local-model",
         system_prompt: activeProfile?.system_prompt || "",
         profile_id: activeProfile?.id || "default",
+        agent_enabled: agentEnabled,
+        workspace,
       });
       setConversations((prev) => [created, ...prev]);
       setActiveConversationId(created.id);
@@ -201,12 +250,12 @@ export default function App() {
     const effectiveSystemPrompt =
       appSettings.custom_system_prompt.trim() || activeProfile?.system_prompt || "";
 
-    await sendMessage(prompt, targetConvId, effectiveSystemPrompt, appSettings);
+    await sendMessage(prompt, targetConvId, effectiveSystemPrompt, appSettings, agentOptions);
   };
 
   const handleRegenerate = async () => {
     if (!activeConversationId) return;
-    await regenerateResponse(activeConversationId, appSettings);
+    await regenerateResponse(activeConversationId, appSettings, agentOptions);
   };
 
   const handleEditMessage = async (messageId: string, newContent: string) => {
@@ -218,7 +267,8 @@ export default function App() {
       messageId,
       newContent,
       effectiveSystemPrompt,
-      appSettings
+      appSettings,
+      agentOptions
     );
   };
 
@@ -284,6 +334,15 @@ export default function App() {
 
             {/* Prompt Input Box */}
             <div className="p-3 border-t border-white/[0.06] bg-[#07090E]/80 backdrop-blur-md">
+              <AgentBar
+                enabled={agentEnabled}
+                workspace={workspace}
+                modelName={engineStatus?.model_name}
+                disabled={isGenerating}
+                onToggle={handleToggleAgent}
+                onChooseWorkspace={handleChooseWorkspace}
+                onClearWorkspace={handleClearWorkspace}
+              />
               <PromptInput
                 onSend={handleSendPrompt}
                 onStop={stopStream}

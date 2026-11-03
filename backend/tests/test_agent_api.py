@@ -176,3 +176,30 @@ async def test_restored_v1_backup_migrates_again(monkeypatch, tmp_path):
     with sqlite3.connect(db_path) as con:
         assert con.execute("PRAGMA user_version").fetchone()[0] == 2
         assert con.execute("SELECT content FROM messages WHERE id='m1'").fetchone()[0] == "hello from v1"
+
+
+# --- per-conversation agent settings (Phase D) ------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_agent_mode_and_workspace_are_saved_per_conversation(async_client, workspace):
+    created = (await async_client.post("/api/conversations", json={"title": "a", "agent_enabled": True, "workspace": workspace})).json()
+    detail = (await async_client.get(f"/api/conversations/{created['id']}")).json()
+    assert detail["agent_enabled"] is True and detail["workspace"].lower() == workspace.lower()
+
+    res = await async_client.patch(f"/api/conversations/{created['id']}", json={"agent_enabled": False, "workspace": ""})
+    assert res.status_code == 200
+    detail = (await async_client.get(f"/api/conversations/{created['id']}")).json()
+    assert detail["agent_enabled"] is False and detail["workspace"] is None
+
+    plain = (await async_client.post("/api/conversations", json={"title": "b"})).json()
+    detail = (await async_client.get(f"/api/conversations/{plain['id']}")).json()
+    assert detail["agent_enabled"] is False and detail["workspace"] is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [r"relative\path", "C:\\", r"C:\does\not\exist\anywhere"])
+async def test_bad_workspace_is_not_saved(async_client, bad):
+    created = (await async_client.post("/api/conversations", json={"title": "c"})).json()
+    res = await async_client.patch(f"/api/conversations/{created['id']}", json={"workspace": bad})
+    assert res.status_code == 400 and res.json()["detail"].startswith("Workspace:")
+    assert (await async_client.post("/api/conversations", json={"title": "d", "workspace": bad})).status_code == 400

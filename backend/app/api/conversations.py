@@ -11,6 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from app.agent.workspace import Workspace, WorkspaceError
 from app.db.database import get_db
 
 logger = logging.getLogger("mustang.conversations")
@@ -24,6 +25,8 @@ class CreateConversationRequest(BaseModel):
     model: str = ""
     system_prompt: str = ""
     profile_id: str = "default"
+    agent_enabled: bool = False
+    workspace: str | None = Field(default=None, max_length=1024)
 
 
 class UpdateConversationRequest(BaseModel):
@@ -31,6 +34,18 @@ class UpdateConversationRequest(BaseModel):
     system_prompt: str | None = None
     profile_id: str | None = None
     model: str | None = None
+    agent_enabled: bool | None = None
+    workspace: str | None = Field(default=None, max_length=1024)  # "" clears it
+
+
+def _checked_workspace(folder: str | None) -> str | None:
+    """A workspace folder as stored: validated like the agent will use it, or None."""
+    if not folder:
+        return None
+    try:
+        return str(Workspace(folder).root)
+    except WorkspaceError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Workspace: {e}")
 
 
 class MessageItem(BaseModel):
@@ -88,6 +103,8 @@ class ConversationDetail(BaseModel):
     created_at: float
     updated_at: float
     messages: list[MessageItem]
+    agent_enabled: bool = False
+    workspace: str | None = None
 
 
 # --- Endpoints ---
@@ -138,15 +155,16 @@ async def create_conversation(req: CreateConversationRequest):
     conv_id = str(uuid.uuid4())
     now = time.time()
     title = req.title.strip() if req.title and req.title.strip() else "New Chat"
+    workspace = _checked_workspace(req.workspace)
 
     db = await get_db()
     try:
         await db.execute(
             """
-            INSERT INTO conversations (id, title, model, system_prompt, profile_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO conversations (id, title, model, system_prompt, profile_id, created_at, updated_at, agent_enabled, workspace)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (conv_id, title, req.model, req.system_prompt, req.profile_id, now, now),
+            (conv_id, title, req.model, req.system_prompt, req.profile_id, now, now, int(req.agent_enabled), workspace),
         )
         await db.commit()
         return ConversationSummary(
@@ -207,6 +225,8 @@ async def get_conversation(conversation_id: str):
             created_at=conv["created_at"],
             updated_at=conv["updated_at"],
             messages=messages,
+            agent_enabled=bool(conv["agent_enabled"]),
+            workspace=conv["workspace"],
         )
     finally:
         await db.close()
@@ -231,15 +251,17 @@ async def update_conversation(conversation_id: str, req: UpdateConversationReque
         new_prompt = req.system_prompt if req.system_prompt is not None else conv["system_prompt"]
         new_profile = req.profile_id if req.profile_id is not None else conv["profile_id"]
         new_model = req.model if req.model is not None else conv["model"]
+        new_agent = int(req.agent_enabled) if req.agent_enabled is not None else conv["agent_enabled"]
+        new_workspace = _checked_workspace(req.workspace) if req.workspace is not None else conv["workspace"]
         now = time.time()
 
         await db.execute(
             """
             UPDATE conversations
-            SET title = ?, system_prompt = ?, profile_id = ?, model = ?, updated_at = ?
+            SET title = ?, system_prompt = ?, profile_id = ?, model = ?, agent_enabled = ?, workspace = ?, updated_at = ?
             WHERE id = ?
             """,
-            (new_title, new_prompt, new_profile, new_model, now, conversation_id),
+            (new_title, new_prompt, new_profile, new_model, new_agent, new_workspace, now, conversation_id),
         )
         await db.commit()
 

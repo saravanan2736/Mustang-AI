@@ -78,15 +78,40 @@ export interface EngineStatus {
   active_tokens_per_sec: number;
 }
 
+export interface ToolCallInfo {
+  id: string;
+  type?: "function";
+  function: { name: string; arguments: string };
+}
+
+/** One tool call of an agent-mode reply, as shown in the chat (live or reloaded). */
+export interface AgentStep {
+  call_id: string;
+  step: number;
+  name: string;
+  arguments: string;
+  status: "running" | "ok" | "error";
+  result?: string;
+  /** Text the model wrote before making this call ("Let me check the file."). */
+  note?: string;
+}
+
 export interface ChatMessage {
   id: string;
   conversation_id?: string;
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
   token_count?: number;
   finish_reason?: string | null;
   created_at?: number;
   timestamp?: number;
+  /** Stored agent-mode rows (schema v2): calls made by an assistant step, or the call a tool row answers. */
+  tool_calls?: ToolCallInfo[] | null;
+  tool_call_id?: string | null;
+  /** UI only: the tool steps that led to this assistant answer. */
+  steps?: AgentStep[];
+  /** UI only: why an agent reply ended early (step_limit, repeated_calls, tool_errors, stopped). */
+  agent_stop_reason?: string | null;
 }
 
 export interface ConversationSummary {
@@ -110,6 +135,8 @@ export interface ConversationDetail {
   created_at: number;
   updated_at: number;
   messages: ChatMessage[];
+  agent_enabled?: boolean;
+  workspace?: string | null;
 }
 
 export interface AssistantProfile {

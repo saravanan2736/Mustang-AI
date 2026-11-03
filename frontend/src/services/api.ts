@@ -280,6 +280,8 @@ export async function createConversation(data: {
   model?: string;
   system_prompt?: string;
   profile_id?: string;
+  agent_enabled?: boolean;
+  workspace?: string | null;
 }): Promise<ConversationSummary> {
   const res = await apiFetch(`/api/conversations`, {
     method: "POST",
@@ -298,14 +300,25 @@ export async function fetchConversation(id: string): Promise<ConversationDetail>
 
 export async function updateConversation(
   id: string,
-  data: { title?: string; system_prompt?: string; profile_id?: string; model?: string }
+  data: {
+    title?: string;
+    system_prompt?: string;
+    profile_id?: string;
+    model?: string;
+    agent_enabled?: boolean;
+    /** Agent mode's workspace folder; "" clears it. */
+    workspace?: string;
+  }
 ): Promise<ConversationSummary> {
   const res = await apiFetch(`/api/conversations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: getHeaders(false),
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update conversation");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update conversation");
+  }
   return res.json();
 }
 

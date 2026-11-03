@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { ChatMessage } from "../types";
 import { CodeBlock } from "./CodeBlock";
+import { ToolSteps } from "./ToolSteps";
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -213,6 +214,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 )
               ) : (
                 <div className="markdown-content prose prose-invert prose-sm max-w-none space-y-2">
+                  {msg.steps?.length ? (
+                    <ToolSteps steps={msg.steps} stopReason={msg.agent_stop_reason} />
+                  ) : null}
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
                     rehypePlugins={[rehypeKatex]}
@@ -243,7 +247,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   </ReactMarkdown>
 
                   {/* Pulsing cursor while generating tokens */}
-                  {isGenerating && msg.content === "" && (
+                  {isGenerating && index === messages.length - 1 && msg.content === "" && !msg.steps?.some((s) => s.status === "running") && (
                     <span className="inline-block w-2 h-4 bg-indigo-400 animate-pulse align-middle ml-1" />
                   )}
                   {isGenerating && index === messages.length - 1 && msg.content !== "" && (

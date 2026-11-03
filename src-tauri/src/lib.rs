@@ -127,6 +127,7 @@ pub fn run() {
             desktop::desktop_settings,
             desktop::set_close_to_tray,
             desktop::choose_models_folder,
+            desktop::choose_workspace_folder,
             desktop::reset_models_folder,
             desktop::open_folder,
             desktop::open_external,

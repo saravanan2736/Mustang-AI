@@ -51,6 +51,23 @@ pub fn set_close_to_tray(manager: State<'_, Arc<BackendManager>>, enabled: bool)
     Ok(())
 }
 
+/// Native folder picker for agent mode's workspace. Returns what the user picked (`None` =
+/// cancelled); the backend checks the folder again every time the agent uses it.
+#[tauri::command(async)]
+pub fn choose_workspace_folder(app: AppHandle) -> Result<Option<String>, String> {
+    // Test hook, as for the models folder: the folder the native dialog would return.
+    let path = match std::env::var_os("MUSTANG_DESKTOP_TEST_PICK_FOLDER") {
+        Some(p) => PathBuf::from(p),
+        None => {
+            let Some(picked) = app.dialog().file().set_title("Choose a workspace folder for agent mode").blocking_pick_folder() else {
+                return Ok(None);
+            };
+            picked.into_path().map_err(|e| e.to_string())?
+        }
+    };
+    Ok(Some(path.display().to_string()))
+}
+
 /// Native folder picker → validation → persist → backend restart. `None` = cancelled.
 #[tauri::command(async)]
 pub fn choose_models_folder(app: AppHandle, manager: State<'_, Arc<BackendManager>>) -> Result<Option<String>, String> {
