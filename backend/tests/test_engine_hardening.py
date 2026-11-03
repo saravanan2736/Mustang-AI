@@ -79,6 +79,7 @@ def _ready_engine(tmp_path) -> LlamaServerEngine:
     engine._config = EngineConfig(model_path=tmp_path / "m.gguf", port=1)
     engine._state = EngineState.READY
     engine._api_key = "k" * 64
+    engine._http = llama_engine.httpx.AsyncClient(timeout=120.0)  # created per process by _spawn_and_verify
     return engine
 
 
@@ -121,6 +122,30 @@ async def test_stream_sends_api_key_and_top_k(monkeypatch, tmp_path):
     assert seen["auth"] == "Bearer " + "k" * 64
     assert seen["body"]["top_k"] == 17
     assert engine._state == EngineState.READY
+
+
+@pytest.mark.asyncio
+async def test_one_http_client_per_process_closed_on_stop(monkeypatch, tmp_path):
+    # Found in the M4 Phase G soak: a new AsyncClient per probe and per chat ended up in
+    # reference cycles holding an SSL context and socket buffers, ~1 MB native per cycle.
+    created = []
+    real_client = httpx.AsyncClient
+
+    class CountingClient(real_client):
+        def __init__(self, *args, **kwargs):
+            kwargs["transport"] = httpx.MockTransport(lambda r: httpx.Response(200, text=_sse("ok"), headers={"content-type": "text/event-stream"}))
+            super().__init__(*args, **kwargs)
+            created.append(self)
+
+    monkeypatch.setattr(llama_engine.httpx, "AsyncClient", CountingClient)
+    engine = _ready_engine(tmp_path)
+    req = ChatCompletionRequest(messages=[ChatMessage(role="user", content="hi")])
+    for _ in range(3):
+        assert "".join([c.delta_content async for c in engine.stream_chat(req)]) == "ok"
+    assert len(created) == 1
+
+    await engine._stop_process_internal()
+    assert engine._http is None and created[0].is_closed
 
 
 @pytest.mark.asyncio

@@ -55,6 +55,11 @@ class LlamaServerEngine(InferenceEngine):
         self._lifecycle_lock = asyncio.Lock()
         self._gen_lock = asyncio.Lock()
         self._active_client: httpx.AsyncClient | None = None
+        # One client per llama-server process, closed when the process stops. A new client per
+        # probe or chat left a client, its SSL context and a socket buffer in reference cycles
+        # (through exception tracebacks) that only Python's rare full collections freed: about
+        # 1 MB of native memory per load-and-chat cycle (M4 Phase G soak).
+        self._http: httpx.AsyncClient | None = None
         self._active_response: httpx.Response | None = None
         self._cancel_requested = False
 
@@ -210,6 +215,9 @@ class LlamaServerEngine(InferenceEngine):
 
         logger.info(f"Spawning llama-server: {' '.join(cmd)}")
 
+        await self._close_http()
+        self._http = httpx.AsyncClient(timeout=120.0, trust_env=False)
+
         try:
             self._api_key = secrets.token_hex(32)
             self._process = await asyncio.create_subprocess_exec(
@@ -244,11 +252,12 @@ class LlamaServerEngine(InferenceEngine):
             # listening yet is retried for about a second instead of being refused, so keep
             # the connect timeout short; a listening port accepts in well under 1 ms.
             try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(1.0, connect=0.05)) as client:
-                    resp = await client.get(f"http://{config.host}:{config.port}/health")
-                    if resp.status_code == 200:
-                        is_ready = True
-                        break
+                resp = await self._http.get(
+                    f"http://{config.host}:{config.port}/health", timeout=httpx.Timeout(1.0, connect=0.05)
+                )
+                if resp.status_code == 200:
+                    is_ready = True
+                    break
             except Exception:
                 pass
 
@@ -323,10 +332,9 @@ class LlamaServerEngine(InferenceEngine):
                 break
 
             try:
-                async with httpx.AsyncClient(timeout=1.5) as client:
-                    resp = await client.get(f"http://{self._config.host}:{self._config.port}/health")
-                    if resp.status_code != 200:
-                        logger.warning(f"Healthcheck returned non-200: {resp.status_code}")
+                resp = await self._http.get(f"http://{self._config.host}:{self._config.port}/health", timeout=1.5)
+                if resp.status_code != 200:
+                    logger.warning(f"Healthcheck returned non-200: {resp.status_code}")
             except Exception as e:
                 logger.warning(f"Health probe error: {e}")
 
@@ -365,11 +373,20 @@ class LlamaServerEngine(InferenceEngine):
                 except Exception:
                     pass
 
+        await self._close_http()
         self._process = None
         self._state = EngineState.UNLOADED
         self._config = None
         logger.info("llama-server stopped and unloaded.")
         return True
+
+    async def _close_http(self) -> None:
+        client, self._http = self._http, None
+        if client is not None:
+            try:
+                await client.aclose()
+            except Exception as e:
+                logger.debug(f"HTTP client close note: {e}")
 
     async def stop(self) -> bool:
         """Controlled thread-safe shutdown acquiring lifecycle lock."""
@@ -423,46 +440,46 @@ class LlamaServerEngine(InferenceEngine):
             self._cancel_requested = False
 
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
-                    self._active_client = client
-                    async with client.stream("POST", url, json=payload, headers=self._auth_headers()) as resp:
-                        self._active_response = resp
-                        if resp.status_code != 200:
-                            err_body = await resp.aread()
-                            raise RuntimeError(f"llama-server error {resp.status_code}: {err_body.decode('utf-8')}")
+                client = self._http
+                self._active_client = client
+                async with client.stream("POST", url, json=payload, headers=self._auth_headers()) as resp:
+                    self._active_response = resp
+                    if resp.status_code != 200:
+                        err_body = await resp.aread()
+                        raise RuntimeError(f"llama-server error {resp.status_code}: {err_body.decode('utf-8')}")
 
-                        async for line in resp.aiter_lines():
-                            if self._cancel_requested:
-                                break
-                            if not line or not line.startswith("data:"):
+                    async for line in resp.aiter_lines():
+                        if self._cancel_requested:
+                            break
+                        if not line or not line.startswith("data:"):
+                            continue
+
+                        data_str = line[5:].strip()
+                        if data_str == "[DONE]":
+                            break
+
+                        try:
+                            chunk_json = json.loads(data_str)
+                            choices = chunk_json.get("choices", [])
+                            if not choices:
                                 continue
+                            delta = choices[0].get("delta", {})
+                            content = delta.get("content") or ""
+                            finish_reason = choices[0].get("finish_reason")
 
-                            data_str = line[5:].strip()
-                            if data_str == "[DONE]":
-                                break
+                            if content:
+                                token_count += 1
+                                elapsed = max(0.01, time.time() - start_time)
+                                self._active_tokens_per_sec = round(token_count / elapsed, 1)
 
-                            try:
-                                chunk_json = json.loads(data_str)
-                                choices = chunk_json.get("choices", [])
-                                if not choices:
-                                    continue
-                                delta = choices[0].get("delta", {})
-                                content = delta.get("content") or ""
-                                finish_reason = choices[0].get("finish_reason")
-
-                                if content:
-                                    token_count += 1
-                                    elapsed = max(0.01, time.time() - start_time)
-                                    self._active_tokens_per_sec = round(token_count / elapsed, 1)
-
-                                yield ChatChunk(
-                                    id=chunk_json.get("id", "chunk"),
-                                    model=self._config.model_path.name,
-                                    delta_content=content,
-                                    finish_reason=finish_reason,
-                                )
-                            except json.JSONDecodeError:
-                                continue
+                            yield ChatChunk(
+                                id=chunk_json.get("id", "chunk"),
+                                model=self._config.model_path.name,
+                                delta_content=content,
+                                finish_reason=finish_reason,
+                            )
+                        except json.JSONDecodeError:
+                            continue
             except Exception:
                 # Closing the upstream stream (cancel_generation) surfaces as a read error here.
                 if not self._cancel_requested:

@@ -9,8 +9,9 @@ import time
 from pathlib import Path
 from fastapi import HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
-from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.datastructures import Headers
 from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from app.config import settings
 
@@ -70,19 +71,31 @@ def verify_session_token(token: str | None = Security(_api_key_header)) -> bool:
     return True
 
 
-class HostValidationMiddleware(BaseHTTPMiddleware):
-    """Rejects any request whose Host header does not match localhost / 127.0.0.1 (DNS Rebinding guard)."""
+class HostValidationMiddleware:
+    """Rejects any request whose Host header does not match localhost / 127.0.0.1 (DNS Rebinding guard).
 
-    async def dispatch(self, request: Request, call_next):
-        host_header = request.headers.get("host", "")
-        # Allow requests without host only in test environments or loopback
-        clean_host = host_header.split(":")[0].lower()
-        if clean_host not in ("127.0.0.1", "localhost", "testserver"):
-            return JSONResponse(
-                status_code=403,
-                content={"error": f"Forbidden: Host '{clean_host}' is rejected by loopback security policy."},
-            )
-        return await call_next(request)
+    Plain ASGI rather than BaseHTTPMiddleware: that one runs every request in an anyio task group
+    and cancels it afterwards, and the CancelledError tracebacks kept request frames (with their
+    sockets and buffers) in reference cycles that only Python's rare full collections freed
+    (M4 Phase G soak).
+    """
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] == "http":
+            host_header = Headers(scope=scope).get("host", "")
+            # Allow requests without host only in test environments or loopback
+            clean_host = host_header.split(":")[0].lower()
+            if clean_host not in ("127.0.0.1", "localhost", "testserver"):
+                response = JSONResponse(
+                    status_code=403,
+                    content={"error": f"Forbidden: Host '{clean_host}' is rejected by loopback security policy."},
+                )
+                await response(scope, receive, send)
+                return
+        await self.app(scope, receive, send)
 
 
 WINDOWS_RESERVED_NAMES = {
