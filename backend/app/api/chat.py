@@ -144,6 +144,14 @@ async def chat_completions(
     Monitors client disconnect and aborts generation cleanly if connection drops.
     Persists user prompt and assistant stream to the active conversation in SQLite.
     """
+    if chat_req.uses_tools:
+        # Conversations store text turns only; tool use here comes with agent mode (M5 Phase C).
+        # OpenAI-compatible clients can use tools through /v1/chat/completions.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Tools are not supported on this endpoint yet; use /v1/chat/completions.",
+        )
+
     status_obj = await engine.get_status()
     if status_obj.state != EngineState.READY:
         raise HTTPException(

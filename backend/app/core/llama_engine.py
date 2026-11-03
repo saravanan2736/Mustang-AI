@@ -13,6 +13,7 @@ import secrets
 import shutil
 import subprocess
 import time
+import uuid
 from pathlib import Path
 from typing import AsyncIterator
 import httpx
@@ -21,16 +22,60 @@ from app.config import settings
 from app.core.engine_base import (
     ChatChunk,
     ChatCompletionRequest,
+    ChatMessage,
     EngineConfig,
     EngineState,
     EngineStatus,
     InferenceEngine,
+    ToolCall,
+    ToolCallFunction,
 )
 
 logger = logging.getLogger("mustang.engine.llama")
 
 # No console window for llama-server (the packaged desktop app has no console).
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def _wire_message(m: ChatMessage) -> dict:
+    """A chat message in the OpenAI shape llama-server expects, with tool fields only when set."""
+    out: dict = {"role": m.role, "content": m.content}
+    if m.tool_calls:
+        out["tool_calls"] = [tc.model_dump() for tc in m.tool_calls]
+    if m.tool_call_id:
+        out["tool_call_id"] = m.tool_call_id
+    return out
+
+
+class _ToolCallAssembler:
+    """Collects streamed delta.tool_calls fragments (by index) into complete tool calls."""
+
+    def __init__(self):
+        self._parts: dict[int, dict] = {}
+
+    def add(self, fragments: list[dict]) -> None:
+        for frag in fragments:
+            slot = self._parts.setdefault(frag.get("index", len(self._parts)), {"id": None, "name": "", "arguments": ""})
+            slot["id"] = frag.get("id") or slot["id"]
+            fn = frag.get("function") or {}
+            slot["name"] += fn.get("name") or ""
+            slot["arguments"] += fn.get("arguments") or ""
+
+    def take(self) -> list[ToolCall] | None:
+        """The finished calls (once); None if there were none. Built without validation: the
+        name and arguments come from the model and are checked by whoever runs the tool."""
+        if not self._parts:
+            return None
+        calls = [
+            ToolCall.model_construct(
+                id=p["id"] or f"call_{uuid.uuid4().hex[:24]}",
+                type="function",
+                function=ToolCallFunction.model_construct(name=p["name"], arguments=p["arguments"] or "{}"),
+            )
+            for _, p in sorted(self._parts.items())
+        ]
+        self._parts = {}
+        return calls
 
 
 def _engine_environment(api_key: str) -> dict[str, str]:
@@ -462,7 +507,7 @@ class LlamaServerEngine(InferenceEngine):
             
             payload = {
                 "model": self._config.model_path.name,
-                "messages": [{"role": m.role, "content": m.content} for m in request.messages],
+                "messages": [_wire_message(m) for m in request.messages],
                 "temperature": request.temperature,
                 "top_p": request.top_p,
                 "top_k": request.top_k,
@@ -470,6 +515,11 @@ class LlamaServerEngine(InferenceEngine):
                 "repeat_penalty": request.repeat_penalty,
                 "stream": True,
             }
+            if request.tools:
+                payload["tools"] = [t.model_dump(exclude_none=True) for t in request.tools]
+            if request.tool_choice is not None:
+                payload["tool_choice"] = request.tool_choice
+            tool_calls = _ToolCallAssembler()
 
             start_time = time.time()
             token_count = 0
@@ -502,20 +552,32 @@ class LlamaServerEngine(InferenceEngine):
                             delta = choices[0].get("delta", {})
                             content = delta.get("content") or ""
                             finish_reason = choices[0].get("finish_reason")
+                            if delta.get("tool_calls"):
+                                tool_calls.add(delta["tool_calls"])
+                                if not content and not finish_reason:
+                                    continue
 
                             if content:
                                 token_count += 1
                                 elapsed = max(0.01, time.time() - start_time)
                                 self._active_tokens_per_sec = round(token_count / elapsed, 1)
 
+                            finished_calls = tool_calls.take() if finish_reason else None
                             yield ChatChunk(
                                 id=chunk_json.get("id", "chunk"),
                                 model=self._config.model_path.name,
                                 delta_content=content,
-                                finish_reason=finish_reason,
+                                finish_reason="tool_calls" if finished_calls else finish_reason,
+                                tool_calls=finished_calls,
                             )
                         except json.JSONDecodeError:
                             continue
+
+                    # A stream that ends without a finish_reason still delivers its calls,
+                    # unless it was cancelled (a cut-off call must not be run).
+                    leftover = None if self._cancel_requested else tool_calls.take()
+                    if leftover:
+                        yield ChatChunk(id="chunk", model=self._config.model_path.name, finish_reason="tool_calls", tool_calls=leftover)
             except Exception:
                 # Closing the upstream stream (cancel_generation) surfaces as a read error here.
                 if not self._cancel_requested:

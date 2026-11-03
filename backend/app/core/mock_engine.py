@@ -15,6 +15,8 @@ from app.core.engine_base import (
     EngineState,
     EngineStatus,
     InferenceEngine,
+    ToolCall,
+    ToolCallFunction,
 )
 
 
@@ -101,13 +103,31 @@ class MockEngine(InferenceEngine):
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         model_name = self._config.model_path.name if self._config else "mock-model"
 
+        last = request.messages[-1] if request.messages else None
+        # With tools offered and a user turn last, call the first tool (deterministic).
+        if request.tools and request.tool_choice != "none" and last is not None and last.role == "user":
+            try:
+                yield ChatChunk(
+                    id=completion_id,
+                    model=model_name,
+                    finish_reason="tool_calls",
+                    tool_calls=[ToolCall(id="call_mock_1", function=ToolCallFunction(
+                        name=request.tools[0].function.name, arguments='{"mock": true}'))],
+                )
+            finally:
+                self._state = EngineState.READY
+            return
+
         # Deterministic response tokens based on user query
-        user_msg = request.messages[-1].content if request.messages else "Hello"
-        mock_text = (
-            f"Mustang AI verified response to: '{user_msg}'. "
-            "Local inference streaming is fully operational. "
-            "System is running with strict loopback security and real-time token delivery."
-        )
+        user_msg = last.content if last is not None else "Hello"
+        if last is not None and last.role == "tool":
+            mock_text = f"Mock answer using the tool result: {last.content}"
+        else:
+            mock_text = (
+                f"Mustang AI verified response to: '{user_msg}'. "
+                "Local inference streaming is fully operational. "
+                "System is running with strict loopback security and real-time token delivery."
+            )
         words = mock_text.split(" ")
 
         try:

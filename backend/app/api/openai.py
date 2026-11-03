@@ -21,6 +21,11 @@ from app.core.engine_base import (
 router = APIRouter(prefix="/v1", tags=["openai"])
 
 
+def _wire_tool_calls(calls) -> list[dict]:
+    """Tool calls in the OpenAI response shape (streamed deltas carry an index)."""
+    return [{"index": i, **c.model_dump()} for i, c in enumerate(calls)]
+
+
 @router.get("/models")
 async def list_openai_models():
     """Lists available local models in standard OpenAI JSON format."""
@@ -69,6 +74,9 @@ async def openai_chat_completions(
                         await engine.cancel_generation()
                         break
 
+                    delta = {"content": chunk.delta_content}
+                    if chunk.tool_calls:
+                        delta["tool_calls"] = _wire_tool_calls(chunk.tool_calls)
                     payload = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
@@ -77,7 +85,7 @@ async def openai_chat_completions(
                         "choices": [
                             {
                                 "index": 0,
-                                "delta": {"content": chunk.delta_content},
+                                "delta": delta,
                                 "finish_reason": chunk.finish_reason,
                             }
                         ],
@@ -104,14 +112,21 @@ async def openai_chat_completions(
 
     # Non-streaming collection
     content_parts = []
+    tool_calls = []
     finish_reason = "stop"
     async for chunk in engine.stream_chat(req):
         if chunk.delta_content:
             content_parts.append(chunk.delta_content)
+        if chunk.tool_calls:
+            tool_calls.extend(chunk.tool_calls)
         if chunk.finish_reason:
             finish_reason = chunk.finish_reason
 
     full_content = "".join(content_parts)
+    message = {"role": "assistant", "content": full_content}
+    if tool_calls:
+        message["content"] = full_content or None  # OpenAI: null content on a tool-call turn
+        message["tool_calls"] = [c.model_dump() for c in tool_calls]
     return {
         "id": completion_id,
         "object": "chat.completion",
@@ -120,7 +135,7 @@ async def openai_chat_completions(
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": full_content},
+                "message": message,
                 "finish_reason": finish_reason,
             }
         ],

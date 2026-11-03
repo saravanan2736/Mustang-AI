@@ -6,8 +6,8 @@ Decouples application UI and API from any specific engine implementation.
 from abc import ABC, abstractmethod
 from enum import Enum
 from pathlib import Path
-from typing import AsyncIterator, Literal
-from pydantic import BaseModel, Field
+from typing import Any, AsyncIterator, Literal
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class EngineState(str, Enum):
@@ -44,9 +44,51 @@ class EngineStatus(BaseModel):
     active_tokens_per_sec: float = 0.0
 
 
+_TOOL_NAME_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+
+
+class ToolFunction(BaseModel):
+    """OpenAI function-tool definition; `parameters` is a JSON Schema object."""
+    name: str = Field(pattern=_TOOL_NAME_PATTERN)
+    description: str | None = Field(default=None, max_length=2048)
+    parameters: dict[str, Any] = Field(default_factory=lambda: {"type": "object", "properties": {}})
+
+
+class Tool(BaseModel):
+    type: Literal["function"] = "function"
+    function: ToolFunction
+
+
+class ToolCallFunction(BaseModel):
+    name: str = Field(pattern=_TOOL_NAME_PATTERN)
+    arguments: str = "{}"  # JSON text as produced by the model; validated by whoever runs the tool
+
+
+class ToolCall(BaseModel):
+    id: str = Field(min_length=1, max_length=128)
+    type: Literal["function"] = "function"
+    function: ToolCallFunction
+
+
 class ChatMessage(BaseModel):
-    role: Literal["system", "user", "assistant"]
-    content: str
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str = ""
+    tool_calls: list[ToolCall] | None = None  # assistant turns that called tools
+    tool_call_id: str | None = None  # tool turns: which call this result answers
+
+    @field_validator("content", mode="before")
+    @classmethod
+    def _null_content(cls, v):
+        # OpenAI clients send content: null on assistant turns that only call tools.
+        return "" if v is None else v
+
+    @model_validator(mode="after")
+    def _tool_fields_match_role(self):
+        if self.role == "tool" and not self.tool_call_id:
+            raise ValueError("a 'tool' message needs tool_call_id")
+        if self.tool_calls and self.role != "assistant":
+            raise ValueError("only 'assistant' messages can carry tool_calls")
+        return self
 
 
 class ChatCompletionRequest(BaseModel):
@@ -59,6 +101,12 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int = Field(default=2048, ge=1, le=16384)
     repeat_penalty: float = Field(default=1.1, ge=0.0, le=2.0)
     stream: bool = True
+    tools: list[Tool] | None = Field(default=None, max_length=64)
+    tool_choice: Literal["auto", "none", "required"] | dict[str, Any] | None = None
+
+    @property
+    def uses_tools(self) -> bool:
+        return bool(self.tools) or any(m.role == "tool" or m.tool_calls for m in self.messages)
 
 
 class ChatChunk(BaseModel):
@@ -66,6 +114,9 @@ class ChatChunk(BaseModel):
     model: str
     delta_content: str = ""
     finish_reason: str | None = None
+    # Complete tool calls, sent once with the chunk that ends the reply (finish_reason
+    # "tool_calls"); the engine assembles the streamed fragments.
+    tool_calls: list[ToolCall] | None = None
 
 
 class InferenceEngine(ABC):
