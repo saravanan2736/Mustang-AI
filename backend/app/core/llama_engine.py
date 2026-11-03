@@ -4,6 +4,7 @@ Manages process lifecycle, health probes, readiness detection, VRAM parsing, and
 """
 
 import asyncio
+import gc
 import json
 import logging
 import os
@@ -241,6 +242,7 @@ class LlamaServerEngine(InferenceEngine):
 
         # Wait for readiness probe or timeout
         deadline = time.time() + settings.ENGINE_STARTUP_TIMEOUT_SECONDS
+        listen_fallback = time.time() + 5.0
         is_ready = False
 
         while time.time() < deadline:
@@ -250,6 +252,16 @@ class LlamaServerEngine(InferenceEngine):
                 self._error_message = f"llama-server crashed during startup (code {self._process.returncode}):\n{tail_err}"
                 logger.error(self._error_message)
                 return False
+
+            # Probe only once llama-server reports that it is listening (or after a fallback
+            # delay, in case a future version words it differently): every failed connect
+            # attempt leaves a connection object and traceback behind for the garbage collector.
+            if not ready_event.is_set() and time.time() < listen_fallback:
+                try:
+                    await asyncio.wait_for(ready_event.wait(), timeout=0.1)
+                except asyncio.TimeoutError:
+                    pass
+                continue
 
             # Probe /health endpoint. On Windows a connect to a loopback port that is not
             # listening yet is retried for about a second instead of being refused, so keep
@@ -309,7 +321,7 @@ class LlamaServerEngine(InferenceEngine):
                     logger.info(f"Authoritative VRAM Required: {self._authoritative_vram_mb} MiB")
 
                 # Detect readiness sentinel
-                if "HTTP server listening" in line or "server is listening on" in line:
+                if "HTTP server listening" in line or "server is listening on" in line or "listening on http" in line:
                     ready_event.set()
 
                 # Detect OOM
@@ -382,6 +394,11 @@ class LlamaServerEngine(InferenceEngine):
         self._process = None
         self._state = EngineState.UNLOADED
         self._config = None
+        # llama-server drops the connection after every streamed reply, and httpcore leaves each
+        # dropped connection (with its socket buffers) in a reference cycle that only a full
+        # collection frees; Python 3.11 runs those rarely. One pass per unload/switch (tens of ms)
+        # keeps a session with many loads flat (M4 Phase G soak).
+        gc.collect()
         logger.info("llama-server stopped and unloaded.")
         return True
 
