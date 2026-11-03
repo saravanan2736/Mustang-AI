@@ -16,7 +16,7 @@ Environment: E1 (i7-13620H, RTX 5050 Laptop 8 GB, driver 617.42, 24 GB RAM, Wind
 | G6 Clean machine | **Not run: needs E2/E3** | §8 |
 | G7 Signing | **Not met: no certificate**. Signing pipeline ready (`scripts/sign.ps1`, `MUSTANG_SIGN_CERT_THUMBPRINT`); updater signature verification tested in Phase F with a test key | §8 |
 
-The release candidate is functionally ready on E1. The soak finding (stalls of 40–100 s and a step of the backend's memory to ~2.1 GB) was traced to piled-up memory-estimate requests, each re-parsing the whole GGUF file, and is **fixed** (§7.1): a 30-min soak on the installed RC ran 1,524 chats with no errors and no stalls. The slow memory growth found next (~1 MB per load/chat cycle) was traced to garbage in reference cycles from per-request HTTP clients and the host-check middleware, and is **fixed** (§7.2). A 30-min desktop soak now grows ~0.13 MB per cycle instead of ~1.06. A small residual remains, and the 4-h soak hasn't been run. Switches got faster too (§4). G6 and G7 need hardware and a certificate that are not available here; see §8 for what to run.
+The release candidate is functionally ready on E1. The soak finding (stalls of 40–100 s and a step of the backend's memory to ~2.1 GB) was traced to piled-up memory-estimate requests, each re-parsing the whole GGUF file, and is **fixed** (§7.1): a 30-min soak on the installed RC ran 1,524 chats with no errors and no stalls. The slow memory growth found next (~1 MB per load/chat cycle) was traced to garbage in reference cycles from per-request HTTP clients and the host-check middleware, and is **fixed** (§7.2). After the fixes, the backend's memory stays flat in an isolated soak (556–562 MB over 160 cycles), and the installed RC passes a 15-min soak (§9). The 4-h soak hasn't been run. Switches got faster too (§4). G6 and G7 need hardware and a certificate that are not available here; see §8 for what to run.
 
 ## 2. Security checklist (release build, `src-tauri\target\release`)
 
@@ -199,9 +199,14 @@ With the stalls gone, the backend's memory still rose **linearly by ~1.06 MB per
 |---|---|---|
 | Isolated backend, before | 594 → 676 MB over 80 cycles | ~1.0 MB |
 | Isolated backend, client fix only | 573 → 640 MB over 120 cycles | ~0.55 MB |
-| Isolated backend, both fixes | 578 → 590 MB over 120 cycles | **~0.1 MB** |
+| Isolated backend, both fixes | 578 → 590 MB over 120 cycles | ~0.1 MB |
+| Isolated backend, plus the third fix below | **556–562 MB over 160 cycles, no trend** | **0** |
 
 With both fixes the backend does far fewer young-generation collections (~26 against ~140 per minute), a sign much less garbage is made.
+
+**Third fix (the residual).** A census after the two fixes still showed ~500 discarded httpx/h11 connections in 150 s, holding ~34 MB of socket buffers. Two causes:
+- **Failed connects during load.** The readiness probe tried to connect ~16 times per load before llama-server was listening, and each failed attempt left a connection and traceback behind. The engine already watched for llama-server's "listening" line, but its markers didn't match b12000's wording (`listening on http://…`). Now the probe waits for that line (with a 5 s fallback): **1 connection per load**.
+- **One connection per streamed chat.** llama-server drops the connection after every streamed reply, even when the reply is read to its end (non-streamed replies are kept alive), so this can't be avoided on our side. The engine now runs one `gc.collect()` after each unload or switch (tens of ms), which frees these.
 
 **Desktop app, 30-min soak on the rebuilt release (`target\release`), same harness as §7.1:**
 
@@ -213,7 +218,7 @@ With both fixes the backend does far fewer young-generation collections (~26 aga
 | Handles / threads / WebView | flat / flat / +3 % | flat / flat / +3 % |
 | Quit | Graceful | Graceful, no leftovers |
 
-The remaining ~0.13 MB per cycle is small but not zero. At the soak's rate of ~11 model loads per minute it would add ~0.35 GB over 4 h, so the scripted 4-h soak **would still likely miss the plan's 10 % criterion** for the backend (the criterion assumes no growth; in normal use, with a few loads per session, this is a few MB). It hasn't been tracked further; one candidate is the anyio task groups that Starlette's streaming responses still use. The 4-h soak (§8) has still to be run before release.
+That desktop run had the first two fixes; the remaining ~0.13 MB per cycle was what the third fix addressed (desktop result for the final RC in §9). In a chat-only session with no loads, the per-chat connections are freed by Python's own full collections; they are bounded but not collected at once. The 4-h soak (§8) has still to be run before release.
 
 Tests: `test_one_http_client_per_process_closed_on_stop` (one client across three chats, closed on stop); the existing host-check tests cover the middleware.
 
@@ -235,10 +240,10 @@ Tests: `test_one_http_client_per_process_closed_on_stop` (one client across thre
 
 | Item | Value |
 |---|---|
-| File | `build\release\0.1.0\Mustang AI_0.1.0_x64-setup.exe` (578,053,609 bytes) |
-| SHA-256 | `7228065c9330a5204356f32e32a42b001b8952a8dd61eb24f9f41f8319ae123f` (also in `SHA256SUMS.txt`) |
-| Contents | all Phase G fixes (§3.1, §3.2, the readiness probe and the cooldown in §4, the estimate cache in §7.1, the cycle-garbage fixes in §7.2); unsigned; updater not configured |
+| File | `build\release\0.1.0\Mustang AI_0.1.0_x64-setup.exe` (578,075,999 bytes) |
+| SHA-256 | `4c26bbc1999facac6e3e05928ee7b65d617970f2507448a1b1f6dd2627b10a0f` (also in `SHA256SUMS.txt`) |
+| Contents | all Phase G fixes (§3.1, §3.2, the readiness probe and the cooldown in §4, the estimate cache in §7.1, all three cycle-garbage fixes in §7.2); unsigned; updater not configured |
 | Silent install | exit 0 in 48 s |
-| Installed app, 15-min soak (§7 harness) | 181 cycles / 1,086 chats / **0 errors** (the previous RC ran ~127 cycles in 15 min); no bind failures or rollbacks in the logs; backend working set 104 → 119 MB (~0.08 MB per cycle), private 573 → 589 MB; handles flat; max 1 engine process; graceful quit, no leftovers |
+| Installed app, 15-min soak (§7 harness) | 182 cycles / 1,092 chats / **0 errors**; no bind failures or rollbacks in the logs; backend working set **93 → 87 MB**, private **560 → 553 MB** (flat); handles flat; max 1 engine process; WebView +6 %; graceful quit, no leftovers |
 
-Superseded: `bc2a4273…2e43e` (before all fixes), `89150d1c…b0ee` (before the estimate fix), `2fc4f4d5…1df7` (before the §7.2 and cooldown fixes; installed and verified: downloaded 1.5B model loaded by file name in 2327 ms, chat, switches 2.2–2.4 s, clean quit), and `1d0df021…91ea` (before the cooldown fix; used for the 30-min soak in §7.2 from `target\release`).
+Superseded: `bc2a4273…2e43e` (before all fixes), `89150d1c…b0ee` (before the estimate fix), `2fc4f4d5…1df7` (before the §7.2 and cooldown fixes; installed and verified: downloaded 1.5B model loaded by file name in 2327 ms, chat, switches 2.2–2.4 s, clean quit), `1d0df021…91ea` (before the cooldown fix; used for the 30-min soak in §7.2 from `target\release`), and `7228065c…123f` (before the third §7.2 fix; installed, 15-min soak: 181 cycles, 1,086 chats, 0 errors, no bind failures, backend working set 104 → 119 MB, graceful quit).

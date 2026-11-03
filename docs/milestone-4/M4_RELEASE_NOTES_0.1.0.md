@@ -30,7 +30,6 @@ Run `Mustang AI_0.1.0_x64-setup.exe` (no administrator rights needed). This buil
 - Automatic updates are built in but not configured for this build (no update server); install new versions with the installer.
 - Each update downloads the full installer (~550 MB).
 - Tested on one machine (RTX 5050 Laptop); clean-machine, multi-GPU and older-GPU testing is still pending. See `M4_PHASEG_RELEASE_REPORT.md`.
-- The local engine host's memory still grows slightly with each model load (about 0.1 MB). This only matters in very long sessions with thousands of loads; restarting the app releases it.
 
 ## Fixed since the first release candidate
 
