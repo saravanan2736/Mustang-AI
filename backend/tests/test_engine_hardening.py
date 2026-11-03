@@ -42,7 +42,39 @@ async def test_spawn_passes_api_key_by_env_and_hardening_flags(monkeypatch, tmp_
     assert len(key) == 64 and all(c in "0123456789abcdef" for c in key)
     assert key not in " ".join(captured["cmd"]), "API key must not appear on the command line"
     assert "--no-webui" in captured["cmd"] and "--offline" in captured["cmd"]
+    assert "--no-agent" in captured["cmd"]
     assert captured["kwargs"]["creationflags"] == subprocess.CREATE_NO_WINDOW
+
+
+@pytest.mark.asyncio
+async def test_llama_arg_variables_never_reach_the_engine(monkeypatch, tmp_path):
+    # M5 Phase 0: llama-server reads any option from LLAMA_ARG_<NAME>, and LLAMA_ARG_TOOLS /
+    # LLAMA_ARG_AGENT turn on its built-in shell and file tools. A shell that sets them (the
+    # browser dev mode inherits the user's environment) must not reach the engine.
+    exe = tmp_path / "llama-server.exe"
+    exe.write_bytes(b"")
+    for name, value in {
+        "LLAMA_ARG_TOOLS": "all",
+        "LLAMA_ARG_AGENT": "1",
+        "LLAMA_ARG_HOST": "0.0.0.0",
+        "LLAMA_API_KEY": "outside-key",
+        "MUSTANG_UNRELATED_SETTING": "kept",
+    }.items():
+        monkeypatch.setenv(name, value)
+    captured = {}
+
+    async def fake_exec(*cmd, **kwargs):
+        captured["cmd"], captured["env"] = cmd, kwargs["env"]
+        raise _SpawnCaptured()
+
+    monkeypatch.setattr(llama_engine.asyncio, "create_subprocess_exec", fake_exec)
+    engine = LlamaServerEngine(binary_path=exe)
+    assert await engine._spawn_and_verify(EngineConfig(model_path=tmp_path / "m.gguf", port=1)) is False
+
+    assert not [k for k in captured["env"] if k.upper().startswith("LLAMA_ARG_")]
+    assert captured["env"]["LLAMA_API_KEY"] == engine._api_key != "outside-key"
+    assert captured["env"]["MUSTANG_UNRELATED_SETTING"] == "kept"
+    assert "--no-agent" in captured["cmd"]
 
 
 @pytest.mark.asyncio

@@ -33,6 +33,19 @@ logger = logging.getLogger("mustang.engine.llama")
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
+def _engine_environment(api_key: str) -> dict[str, str]:
+    """
+    Environment for llama-server: ours, minus every LLAMA_ARG_* variable. llama-server reads
+    any command-line option from LLAMA_ARG_<NAME>, including LLAMA_ARG_TOOLS and
+    LLAMA_ARG_AGENT, which enable its experimental built-in tools (shell commands, file writes)
+    without folder limits or approval. The desktop supervisor already clears the environment;
+    this also covers the browser dev mode, where the backend inherits the user's shell.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.upper().startswith("LLAMA_ARG_")}
+    env["LLAMA_API_KEY"] = api_key
+    return env
+
+
 class LlamaServerEngine(InferenceEngine):
     """Encapsulates the llama-server.exe process with verified lifecycle management."""
 
@@ -212,6 +225,7 @@ class LlamaServerEngine(InferenceEngine):
             "--port", str(config.port),
             "--no-webui",   # the engine port serves the API only
             "--offline",    # never fetch models or other data from the network
+            "--no-agent",   # keep llama-server's own experimental tools (shell, file write) off
             "-v",
         ]
         if config.flash_attention:
@@ -228,7 +242,7 @@ class LlamaServerEngine(InferenceEngine):
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
-                env={**os.environ, "LLAMA_API_KEY": self._api_key},
+                env=_engine_environment(self._api_key),
                 creationflags=_CREATE_NO_WINDOW,
             )
         except Exception as err:
