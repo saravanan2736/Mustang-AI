@@ -14,7 +14,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.agent.loop import DEFAULT_MAX_STEPS, cancel_all as cancel_agent_loops, run_agent
+from app.agent.changes import ChangeError, list_changes, undo_change
+from app.agent.loop import DEFAULT_MAX_STEPS, cancel_all as cancel_agent_loops, resolve_approval, run_agent
 from app.agent.registry import ToolContext
 from app.agent.workspace import Workspace, WorkspaceError
 from app.api.models import get_engine
@@ -147,6 +148,10 @@ async def _stream_agent_response(
                 elif ev.kind == "tool_call":
                     yield frame({}, agent={"event": "tool_call", "step": ev.step, "call_id": ev.call_id,
                                            "name": ev.name, "arguments": ev.arguments})
+                elif ev.kind == "approval":
+                    yield frame({}, agent={"event": "approval_required", "step": ev.step, "call_id": ev.call_id,
+                                           "name": ev.name, "arguments": ev.arguments, "summary": ev.text,
+                                           "diff": ev.extra.get("diff", "")})
                 elif ev.kind == "tool_result":
                     yield frame({}, agent={"event": "tool_result", "step": ev.step, "call_id": ev.call_id,
                                            "name": ev.name, "ok": ev.ok, "content": ev.text[:2000]})
@@ -462,6 +467,66 @@ async def regenerate_response(
         agent_ctx = _agent_context(regen_req.agent, conv_id)
         return await _stream_agent_response(engine, chat_req, agent_ctx, regen_req.agent, conv_id, request)
     return await _stream_chat_response(engine, chat_req, conv_id, request, model_name)
+
+
+class ApprovalDecision(BaseModel):
+    call_id: str = Field(min_length=1, max_length=128)
+    approved: bool
+
+
+class UndoRequest(BaseModel):
+    conversation_id: str
+    call_id: str = Field(min_length=1, max_length=128)
+
+
+async def _conversation_workspace(conv_id: str) -> Workspace | None:
+    db = await get_db()
+    try:
+        rows = await db.execute_fetchall("SELECT workspace FROM conversations WHERE id = ?", (conv_id,))
+    finally:
+        await db.close()
+    if not rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Conversation '{conv_id}' not found")
+    if not rows[0]["workspace"]:
+        return None
+    try:
+        return Workspace(rows[0]["workspace"])
+    except WorkspaceError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Workspace: {e}")
+
+
+@router.post("/approve")
+async def approve_change(decision: ApprovalDecision):
+    """The user's answer to a file change proposed by agent mode (shown as a diff)."""
+    if not resolve_approval(decision.call_id, decision.approved):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No change with that id is waiting for approval.")
+    return {"call_id": decision.call_id, "approved": decision.approved}
+
+
+@router.get("/changes")
+async def get_changes(conversation_id: str):
+    """File changes agent mode made in this chat's workspace, with whether Undo is possible."""
+    ws = await _conversation_workspace(conversation_id)
+    if ws is None:
+        return []
+    try:
+        return await asyncio.to_thread(list_changes, ws, conversation_id)
+    except ChangeError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+
+
+@router.post("/undo")
+async def undo_agent_change(req: UndoRequest):
+    """Put back the previous version of a file agent mode changed (or remove a file it created),
+    if the file is still exactly what the agent wrote."""
+    ws = await _conversation_workspace(req.conversation_id)
+    if ws is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This chat has no workspace folder.")
+    try:
+        entry = await asyncio.to_thread(undo_change, ws, req.call_id, req.conversation_id)
+    except (ChangeError, WorkspaceError) as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    return {"call_id": entry.call_id, "path": entry.path, "kind": entry.kind, "undone": True}
 
 
 @router.post("/stop")

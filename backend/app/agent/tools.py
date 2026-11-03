@@ -311,3 +311,144 @@ register(ToolSpec(
     handler=_search_history,
     max_string=200,
 ))
+
+
+# --- workspace changes (need the user's approval every time) ----------------------------------
+
+# Never written by the agent, even with approval: files Windows would run or open as programs.
+EXECUTABLE_SUFFIXES = {
+    ".exe", ".com", ".bat", ".cmd", ".ps1", ".psm1", ".vbs", ".vbe", ".js", ".jse", ".wsf", ".wsh",
+    ".msi", ".msp", ".scr", ".pif", ".lnk", ".url", ".hta", ".cpl", ".dll", ".sys", ".reg", ".jar", ".appref-ms",
+}
+MAX_WRITE_CHARS = 200_000
+MAX_EDIT_FILE_BYTES = 1024 * 1024
+MAX_DIFF_CHARS = 20_000
+_UTF8_BOM = b"\xef\xbb\xbf"
+
+
+def _check_writable_name(target: Path, path: str) -> None:
+    if target.suffix.lower() in EXECUTABLE_SUFFIXES:
+        raise ToolError(f"{path!r}: agent mode doesn't create or change program and script files ({target.suffix}).")
+    if target.name.lower().endswith(".mustang-tmp"):
+        raise ToolError("That name is reserved.")
+
+
+def _diff(before: str, after: str, path: str, new_file: bool) -> str:
+    import difflib
+
+    lines = difflib.unified_diff(
+        before.splitlines(keepends=True), after.splitlines(keepends=True),
+        fromfile="(new file)" if new_file else f"a/{path}", tofile=f"b/{path}", n=2,
+    )
+    text = "".join(l if l.endswith("\n") else l + "\n" for l in lines)
+    return text if len(text) <= MAX_DIFF_CHARS else text[:MAX_DIFF_CHARS] + "\n[diff cut off]\n"
+
+
+def _prepare_create(path: str, content: str, ctx: ToolContext):
+    from app.agent.changes import apply_change
+    from app.agent.registry import Proposal
+
+    ws = _workspace(ctx)
+    try:
+        target = ws.resolve(path, must_exist=False)
+    except WorkspaceError as e:
+        raise ToolError(str(e))
+    if target.exists():
+        raise ToolError(f"{path!r} already exists. Use edit_file to change it.")
+    if not target.parent.is_dir():
+        raise ToolError(f"The folder for {path!r} doesn't exist; files can only be created in existing folders.")
+    _check_writable_name(target, path)
+    if len(content) > MAX_WRITE_CHARS:
+        raise ToolError(f"Content is too long (max {MAX_WRITE_CHARS} characters).")
+    data = content.encode("utf-8")
+    rel = ws.relative(target)
+    n = len(content.splitlines())
+
+    async def apply(call_id: str) -> str:
+        await asyncio.to_thread(apply_change, ws, target, data, kind="create", call_id=call_id,
+                                conversation_id=ctx.conversation_id, expected_sha256=None)
+        return f"Created {rel} ({n} line{'s' if n != 1 else ''})."
+
+    return Proposal(summary=f"Create {rel} ({n} line{'s' if n != 1 else ''})", diff=_diff("", content, rel, True), apply=apply)
+
+
+def _prepare_edit(path: str, old_text: str, new_text: str, ctx: ToolContext):
+    from app.agent.changes import apply_change, sha256_bytes
+    from app.agent.registry import Proposal
+
+    ws = _workspace(ctx)
+    target = _resolve(ctx, path)
+    if target.is_dir():
+        raise ToolError(f"{path!r} is a folder.")
+    _check_writable_name(target, path)
+    raw = target.read_bytes()
+    if len(raw) > MAX_EDIT_FILE_BYTES:
+        raise ToolError(f"{path!r} is too large to edit ({_size(len(raw))}; the limit is {_size(MAX_EDIT_FILE_BYTES)}).")
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")) or _looks_binary(raw[:8192]):
+        raise ToolError(f"{path!r} is not a UTF-8 text file; it can't be edited here.")
+    bom = raw.startswith(_UTF8_BOM)
+    try:
+        text = raw[len(_UTF8_BOM) if bom else 0:].decode("utf-8")
+    except UnicodeDecodeError:
+        raise ToolError(f"{path!r} is not a UTF-8 text file; it can't be edited here.")
+    crlf = "\r\n" in text
+    norm = text.replace("\r\n", "\n")
+    old = old_text.replace("\r\n", "\n")
+    if not old:
+        raise ToolError("old_text is empty. Give the exact text to replace (read the file first).")
+    count = norm.count(old)
+    if count == 0:
+        raise ToolError(f"old_text was not found in {path!r}. Read the file and copy the exact text to replace.")
+    if count > 1:
+        raise ToolError(f"old_text appears {count} times in {path!r}; include more surrounding text so it is unique.")
+    if len(new_text) > MAX_WRITE_CHARS:
+        raise ToolError(f"new_text is too long (max {MAX_WRITE_CHARS} characters).")
+    updated = norm.replace(old, new_text.replace("\r\n", "\n"), 1)
+    if updated == norm:
+        raise ToolError("new_text is the same as old_text; nothing would change.")
+    out = updated.replace("\n", "\r\n") if crlf else updated
+    data = (_UTF8_BOM if bom else b"") + out.encode("utf-8")
+    before_sha = sha256_bytes(raw)
+    rel = ws.relative(target)
+    diff = _diff(norm, updated, rel, False)
+    added = sum(1 for l in diff.splitlines() if l.startswith("+") and not l.startswith("+++"))
+    removed = sum(1 for l in diff.splitlines() if l.startswith("-") and not l.startswith("---"))
+
+    async def apply(call_id: str) -> str:
+        await asyncio.to_thread(apply_change, ws, target, data, kind="edit", call_id=call_id,
+                                conversation_id=ctx.conversation_id, expected_sha256=before_sha)
+        return f"Edited {rel} (+{added} −{removed} lines). The previous version is kept for Undo."
+
+    return Proposal(summary=f"Edit {rel} (+{added} −{removed} lines)", diff=diff, apply=apply)
+
+
+register(ToolSpec(
+    name="create_file",
+    description="Create a new text file in the user's workspace. The user sees the content and must approve it.",
+    parameters=_obj({
+        "path": {"type": "string", "description": "New file path relative to the workspace, e.g. todo.md"},
+        "content": {"type": "string", "description": "The full text of the file"},
+    }, ["path", "content"]),
+    handler=lambda a, c: _in_thread(_prepare_create, a["path"], a["content"], c),
+    needs_workspace=True,
+    read_only=False,
+    needs_approval=True,
+    max_string=MAX_WRITE_CHARS,
+))
+
+register(ToolSpec(
+    name="edit_file",
+    description=("Change a text file in the user's workspace by replacing one exact piece of text (old_text, "
+                 "which must appear exactly once) with new_text. Read the file first. The user sees the "
+                 "change and must approve it."),
+    parameters=_obj({
+        "path": {"type": "string", "description": "File path relative to the workspace"},
+        "old_text": {"type": "string", "description": "Exact text to replace, copied from the file"},
+        "new_text": {"type": "string", "description": "Replacement text (may be empty to remove old_text)"},
+    }, ["path", "old_text", "new_text"]),
+    handler=lambda a, c: _in_thread(_prepare_edit, a["path"], a["old_text"], a["new_text"], c),
+    needs_workspace=True,
+    read_only=False,
+    needs_approval=True,
+    max_string=MAX_WRITE_CHARS,
+))

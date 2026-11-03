@@ -22,7 +22,16 @@ class ToolContext:
     conversation_id: str | None = None
 
 
-Handler = Callable[[dict[str, Any], ToolContext], Awaitable[str]]
+@dataclass
+class Proposal:
+    """A change a tool wants to make, shown to the user before anything happens. `apply` runs
+    only after the user approved it (with the tool call's id, for the change journal)."""
+    summary: str
+    diff: str
+    apply: Callable[[str], Awaitable[str]]
+
+
+Handler = Callable[[dict[str, Any], ToolContext], Awaitable["str | Proposal"]]
 
 
 @dataclass
@@ -30,9 +39,10 @@ class ToolSpec:
     name: str
     description: str
     parameters: dict[str, Any]
-    handler: Handler
+    handler: Handler  # read-only tools return the result; approval tools return a Proposal
     needs_workspace: bool = False
     read_only: bool = True
+    needs_approval: bool = False
     timeout_s: float = 10.0
     max_string: int = field(default=1000)
 

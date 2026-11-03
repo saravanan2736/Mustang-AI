@@ -3,6 +3,7 @@ M5 Phase C: agent mode through /api/chat/completions (the UI's endpoint), persis
 steps (schema v2), reload, regenerate, and the v1 -> v2 migration with its backup.
 """
 
+import asyncio
 import json
 import sqlite3
 
@@ -203,3 +204,62 @@ async def test_bad_workspace_is_not_saved(async_client, bad):
     res = await async_client.patch(f"/api/conversations/{created['id']}", json={"workspace": bad})
     assert res.status_code == 400 and res.json()["detail"].startswith("Workspace:")
     assert (await async_client.post("/api/conversations", json={"title": "d", "workspace": bad})).status_code == 400
+
+
+# --- file changes over the API (Phase E) ------------------------------------------------------
+
+async def _wait_for_pending(timeout=5.0):
+    from app.agent import loop as agent_loop
+    for _ in range(int(timeout / 0.02)):
+        pending = agent_loop.pending_approvals()
+        if pending:
+            return pending[0]
+        await asyncio.sleep(0.02)
+    raise AssertionError("no change waited for approval")
+
+
+@pytest.mark.asyncio
+async def test_change_approve_list_and_undo_over_the_api(async_client, scripted_engine, workspace):
+    import pathlib
+    conv = (await async_client.post("/api/conversations", json={"title": "e", "agent_enabled": True, "workspace": workspace})).json()["id"]
+    edit = json.dumps({"path": "notes.txt", "old_text": "Buy milk.", "new_text": "Buy eggs."})
+    scripted_engine([{"calls": [("edit_file", edit)]}, {"text": "Changed it."}])
+
+    task = asyncio.create_task(_ask(async_client, conv, workspace, text="Change milk to eggs"))
+    call_id = await _wait_for_pending()
+    assert pathlib.Path(workspace, "notes.txt").read_text(encoding="utf-8").startswith("Buy milk."), "not written yet"
+    assert (await async_client.post("/api/chat/approve", json={"call_id": call_id, "approved": True})).status_code == 200
+    res = await task
+    agent = [e["agent"] for e in _events(res.text) if "agent" in e]
+    assert [a["event"] for a in agent] == ["tool_call", "approval_required", "tool_result", "done"]
+    assert "+Buy eggs." in agent[1]["diff"] and agent[2]["ok"]
+    assert pathlib.Path(workspace, "notes.txt").read_text(encoding="utf-8").startswith("Buy eggs.")
+
+    listed = (await async_client.get(f"/api/chat/changes?conversation_id={conv}")).json()
+    assert [(c["call_id"], c["can_undo"]) for c in listed] == [(call_id, True)]
+    assert (await async_client.post("/api/chat/undo", json={"conversation_id": conv, "call_id": call_id})).status_code == 200
+    assert pathlib.Path(workspace, "notes.txt").read_text(encoding="utf-8").startswith("Buy milk.")
+    again = await async_client.post("/api/chat/undo", json={"conversation_id": conv, "call_id": call_id})
+    assert again.status_code == 409 and "already undone" in again.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_denied_change_over_the_api(async_client, scripted_engine, workspace):
+    import pathlib
+    conv = (await async_client.post("/api/conversations", json={"title": "e2", "agent_enabled": True, "workspace": workspace})).json()["id"]
+    scripted_engine([{"calls": [("create_file", json.dumps({"path": "new.txt", "content": "hi"}))]}, {"text": "OK."}])
+    task = asyncio.create_task(_ask(async_client, conv, workspace, text="make a file"))
+    call_id = await _wait_for_pending()
+    await async_client.post("/api/chat/approve", json={"call_id": call_id, "approved": False})
+    await task
+    assert not pathlib.Path(workspace, "new.txt").exists()
+    assert (await async_client.get(f"/api/chat/changes?conversation_id={conv}")).json() == []
+
+
+@pytest.mark.asyncio
+async def test_approve_and_undo_edge_cases(async_client):
+    assert (await async_client.post("/api/chat/approve", json={"call_id": "call_none", "approved": True})).status_code == 404
+    conv = (await async_client.post("/api/conversations", json={"title": "no ws"})).json()["id"]
+    assert (await async_client.get(f"/api/chat/changes?conversation_id={conv}")).json() == []
+    assert (await async_client.post("/api/chat/undo", json={"conversation_id": conv, "call_id": "x"})).status_code == 400
+    assert (await async_client.get("/api/chat/changes?conversation_id=missing")).status_code == 404

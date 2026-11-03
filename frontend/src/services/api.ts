@@ -1,4 +1,5 @@
 import {
+  AgentChange,
   AppSettings,
   AssistantProfile,
   ConversationDetail,
@@ -320,6 +321,38 @@ export async function updateConversation(
     throw new Error(err.detail || "Failed to update conversation");
   }
   return res.json();
+}
+
+// --- Agent mode file changes (M5 Phase E) ---
+
+async function detailOrThrow(res: Response, fallback: string): Promise<never> {
+  const err = await res.json().catch(() => ({}));
+  throw new Error(err.detail || fallback);
+}
+
+/** Answer a file change the agent proposed (shown as a diff). */
+export async function approveAgentChange(callId: string, approved: boolean): Promise<void> {
+  const res = await apiFetch(`/api/chat/approve`, {
+    method: "POST",
+    headers: getHeaders(false),
+    body: JSON.stringify({ call_id: callId, approved }),
+  });
+  if (!res.ok) await detailOrThrow(res, "Could not send your answer");
+}
+
+export async function fetchAgentChanges(conversationId: string): Promise<AgentChange[]> {
+  const res = await apiFetch(`/api/chat/changes?conversation_id=${encodeURIComponent(conversationId)}`);
+  if (!res.ok) await detailOrThrow(res, "Could not load file changes");
+  return res.json();
+}
+
+export async function undoAgentChange(conversationId: string, callId: string): Promise<void> {
+  const res = await apiFetch(`/api/chat/undo`, {
+    method: "POST",
+    headers: getHeaders(false),
+    body: JSON.stringify({ conversation_id: conversationId, call_id: callId }),
+  });
+  if (!res.ok) await detailOrThrow(res, "Could not undo the change");
 }
 
 export async function deleteConversation(id: string): Promise<void> {

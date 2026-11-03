@@ -80,7 +80,9 @@ export const AgentBar: React.FC<AgentBarProps> = ({
             <span>{workspace ? "Change folder" : "Choose workspace folder"}</span>
           </button>
           <span className="text-slate-500">
-            {workspace ? "Can read files in this folder. Never changes, deletes or runs anything." : "No folder: time, calculator and chat search only."}
+            {workspace
+              ? "Reads files in this folder; asks you before every change (with Undo). Never deletes or runs anything."
+              : "No folder: time, calculator and chat search only."}
           </span>
         </>
       )}

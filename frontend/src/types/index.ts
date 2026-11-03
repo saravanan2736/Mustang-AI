@@ -90,10 +90,23 @@ export interface AgentStep {
   step: number;
   name: string;
   arguments: string;
-  status: "running" | "ok" | "error";
+  /** "awaiting": a file change waiting for the user's Approve/Deny; "denied": the user said no. */
+  status: "running" | "awaiting" | "ok" | "error" | "denied";
   result?: string;
   /** Text the model wrote before making this call ("Let me check the file."). */
   note?: string;
+  /** File changes (create_file, edit_file): one-line summary and the unified diff shown for approval. */
+  summary?: string;
+  diff?: string;
+}
+
+/** A file change agent mode made, as the backend's change journal reports it. */
+export interface AgentChange {
+  call_id: string;
+  path: string;
+  kind: "create" | "edit";
+  undone: boolean;
+  can_undo: boolean;
 }
 
 export interface ChatMessage {

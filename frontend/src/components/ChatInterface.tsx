@@ -16,7 +16,7 @@ import {
   ShieldCheck,
   BookOpen,
 } from "lucide-react";
-import { ChatMessage } from "../types";
+import { AgentChange, ChatMessage } from "../types";
 import { CodeBlock } from "./CodeBlock";
 import { ToolSteps } from "./ToolSteps";
 
@@ -27,6 +27,9 @@ interface ChatInterfaceProps {
   onEditMessage?: (messageId: string, newContent: string) => void;
   onSelectPromptSuggestion?: (text: string) => void;
   activeModelName?: string | null;
+  agentChanges?: Record<string, AgentChange>;
+  onApproveChange?: (callId: string, approved: boolean) => void;
+  onUndoChange?: (callId: string) => void;
 }
 
 export const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -36,6 +39,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onEditMessage,
   onSelectPromptSuggestion,
   activeModelName,
+  agentChanges,
+  onApproveChange,
+  onUndoChange,
 }) => {
   const scrollEndRef = useRef<HTMLDivElement>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -215,7 +221,13 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
               ) : (
                 <div className="markdown-content prose prose-invert prose-sm max-w-none space-y-2">
                   {msg.steps?.length ? (
-                    <ToolSteps steps={msg.steps} stopReason={msg.agent_stop_reason} />
+                    <ToolSteps
+                      steps={msg.steps}
+                      stopReason={msg.agent_stop_reason}
+                      changes={agentChanges}
+                      onApprove={onApproveChange}
+                      onUndo={onUndoChange}
+                    />
                   ) : null}
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm, remarkMath]}
@@ -247,7 +259,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   </ReactMarkdown>
 
                   {/* Pulsing cursor while generating tokens */}
-                  {isGenerating && index === messages.length - 1 && msg.content === "" && !msg.steps?.some((s) => s.status === "running") && (
+                  {isGenerating && index === messages.length - 1 && msg.content === "" && !msg.steps?.some((s) => s.status === "running" || s.status === "awaiting") && (
                     <span className="inline-block w-2 h-4 bg-indigo-400 animate-pulse align-middle ml-1" />
                   )}
                   {isGenerating && index === messages.length - 1 && msg.content !== "" && (

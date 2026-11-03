@@ -22,8 +22,12 @@ import {
   deleteConversation,
   fetchProfiles,
   fetchSettings,
+  approveAgentChange,
+  fetchAgentChanges,
+  undoAgentChange,
 } from "./services/api";
 import {
+  AgentChange,
   AppSettings,
   AssistantProfile,
   ConversationSummary,
@@ -46,6 +50,22 @@ export default function App() {
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [workspace, setWorkspace] = useState<string | null>(null);
   const agentOptions = agentEnabled ? { workspace } : null;
+  // File changes agent mode made in this chat, by tool call id (for Undo)
+  const [agentChanges, setAgentChanges] = useState<Record<string, AgentChange>>({});
+
+  const loadAgentChanges = useCallback(async (conversationId: string | null) => {
+    if (!conversationId) {
+      setAgentChanges({});
+      return;
+    }
+    try {
+      const list = await fetchAgentChanges(conversationId);
+      setAgentChanges(Object.fromEntries(list.map((c) => [c.call_id, c])));
+    } catch (err) {
+      console.warn("Could not load file changes:", err);
+      setAgentChanges({});
+    }
+  }, []);
 
   // Profiles and Settings
   const [profiles, setProfiles] = useState<AssistantProfile[]>([]);
@@ -127,8 +147,9 @@ export default function App() {
   useEffect(() => {
     if (!isGenerating && activeConversationId) {
       loadConversationsList();
+      loadAgentChanges(activeConversationId);
     }
-  }, [isGenerating, activeConversationId, loadConversationsList]);
+  }, [isGenerating, activeConversationId, loadConversationsList, loadAgentChanges]);
 
   const handleSelectConversation = async (id: string) => {
     try {
@@ -177,6 +198,24 @@ export default function App() {
       setErrorMessage(err instanceof Error ? err.message : "Could not save agent settings");
       return false;
     }
+  };
+
+  const handleApproveChange = async (callId: string, approved: boolean) => {
+    try {
+      await approveAgentChange(callId, approved);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not send your answer");
+    }
+  };
+
+  const handleUndoChange = async (callId: string) => {
+    if (!activeConversationId) return;
+    try {
+      await undoAgentChange(activeConversationId, callId);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not undo the change");
+    }
+    await loadAgentChanges(activeConversationId);
   };
 
   const handleToggleAgent = async (enabled: boolean) => {
@@ -330,6 +369,9 @@ export default function App() {
               onEditMessage={handleEditMessage}
               onSelectPromptSuggestion={handleSuggestionSelected}
               activeModelName={engineStatus?.model_name}
+              agentChanges={agentChanges}
+              onApproveChange={handleApproveChange}
+              onUndoChange={handleUndoChange}
             />
 
             {/* Prompt Input Box */}

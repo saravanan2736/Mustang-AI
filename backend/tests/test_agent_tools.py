@@ -64,8 +64,10 @@ def test_file_tools_are_only_offered_with_a_workspace(ws):
     without = {t.name for t in available_tools(ToolContext())}
     with_ws = {t.name for t in available_tools(ws)}
     assert without == {"get_current_time", "calculator", "search_history"}
-    assert with_ws == without | {"list_files", "read_file", "search_files"}
-    assert all(t.read_only for t in available_tools(ws))
+    assert with_ws == without | {"list_files", "read_file", "search_files", "create_file", "edit_file"}
+    # Every tool either only reads or needs the user's approval for each call (M5 Phase E).
+    assert all(t.read_only != t.needs_approval for t in available_tools(ws))
+    assert {t.name for t in available_tools(ws) if t.needs_approval} == {"create_file", "edit_file"}
 
 
 # --- files ------------------------------------------------------------------------------------

@@ -6,7 +6,9 @@
 import { AgentStep, ChatMessage } from "../types";
 
 export interface AgentEvent {
-  event: "tool_call" | "tool_result" | "done";
+  event: "tool_call" | "approval_required" | "tool_result" | "done";
+  summary?: string;
+  diff?: string;
   step?: number;
   call_id?: string;
   name?: string;
@@ -14,6 +16,16 @@ export interface AgentEvent {
   ok?: boolean;
   content?: string;
   reason?: string | null;
+}
+
+/** Tools that change files: every call is shown as a diff and needs the user's approval. */
+export const CHANGE_TOOLS = new Set(["create_file", "edit_file"]);
+
+const DENIED_PREFIX = "The user denied this change";
+
+function resultStatus(ok: boolean, text: string): AgentStep["status"] {
+  if (ok) return "ok";
+  return text.startsWith(DENIED_PREFIX) ? "denied" : "error";
 }
 
 /** Apply one streamed agent event to the assistant message being generated. */
@@ -29,11 +41,19 @@ export function applyAgentEvent(msg: ChatMessage, ev: AgentEvent): ChatMessage {
                           arguments: ev.arguments ?? "{}", status: "running", note }],
     };
   }
+  if (ev.event === "approval_required" && ev.call_id) {
+    return {
+      ...msg,
+      steps: steps.map((s) =>
+        s.call_id === ev.call_id ? { ...s, status: "awaiting", summary: ev.summary, diff: ev.diff } : s
+      ),
+    };
+  }
   if (ev.event === "tool_result" && ev.call_id) {
     return {
       ...msg,
       steps: steps.map((s) =>
-        s.call_id === ev.call_id ? { ...s, status: ev.ok ? "ok" : "error", result: ev.content ?? "" } : s
+        s.call_id === ev.call_id ? { ...s, status: resultStatus(ev.ok ?? false, ev.content ?? ""), result: ev.content ?? "" } : s
       ),
     };
   }
@@ -84,22 +104,24 @@ export function groupAgentMessages(rows: ChatMessage[]): ChatMessage[] {
     } else if (row.role === "tool") {
       pending = pending.map((s) =>
         s.call_id === row.tool_call_id
-          ? { ...s, status: row.content.startsWith("Error:") ? "error" : "ok", result: row.content }
+          ? { ...s, status: resultStatus(!row.content.startsWith("Error:") && !row.content.startsWith(DENIED_PREFIX) && !row.content.startsWith("Stopped before"), row.content), result: row.content }
           : s
       );
     } else if (row.role === "assistant") {
       out.push(pending.length ? { ...row, steps: pending } : row);
       pending = [];
       firstStepRow = null;
+      step = 0; // steps are numbered per reply
     } else {
       flush("stopped"); // a reply that ended during its tool steps
       out.push(row);
+      step = 0;
     }
   }
   flush("stopped");
   // Steps whose result never arrived (stopped mid-call) are not "running" any more.
   return out.map((m) =>
-    m.steps ? { ...m, steps: m.steps.map((s) => (s.status === "running" ? { ...s, status: "error", result: s.result ?? "Stopped." } : s)) } : m
+    m.steps ? { ...m, steps: m.steps.map((s) => (s.status === "running" || s.status === "awaiting" ? { ...s, status: "error", result: s.result ?? "Stopped." } : s)) } : m
   );
 }
 

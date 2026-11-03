@@ -13,6 +13,10 @@ from pathlib import Path, PureWindowsPath
 
 from app.core.security import WINDOWS_RESERVED_NAMES
 
+# Hidden folder in the workspace with backups of files the agent changed (app.agent.changes).
+# The agent's tools can't see, read or write it.
+BACKUP_DIR_NAME = ".mustang-backups"
+
 
 class WorkspaceError(ValueError):
     """A path the model asked for is not allowed; the message is shown to the model."""
@@ -77,6 +81,8 @@ class Workspace:
         parts = [p for p in win.parts if p != "."]
         for part in parts:
             _check_component(part)
+        if parts and parts[0].lower() == BACKUP_DIR_NAME:
+            raise WorkspaceError("That folder holds Mustang AI's backups and is not available to tools.")
 
         current = self.root
         for part in parts:
@@ -98,8 +104,10 @@ class Workspace:
         return "." if str(rel) == "." else str(rel)
 
     def is_followable(self, path: Path) -> bool:
-        """For directory walks: skip links/junctions and anything resolving outside."""
+        """For directory walks: skip links/junctions, the backup folder and anything resolving outside."""
         if _is_reparse_point(path):
+            return False
+        if path.parent == self.root and path.name.lower() == BACKUP_DIR_NAME:
             return False
         try:
             path.resolve(strict=True).relative_to(self.root)
