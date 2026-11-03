@@ -192,24 +192,24 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full overflow-hidden bg-[#07090E] text-slate-200">
+    <div className="flex flex-col h-full overflow-hidden bg-canvas text-fg">
       {/* Search Header Bar */}
-      <div className="p-4 border-b border-white/[0.08] bg-[#0A0D17]/80 flex flex-col sm:flex-row gap-3 items-center justify-between">
+      <div className="p-4 border-b border-line bg-canvas flex flex-col sm:flex-row gap-3 items-center justify-between">
         <form onSubmit={handleSearchSubmit} className="flex-1 flex gap-2 w-full">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-subtle" />
             <input
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
               placeholder="Search Hugging Face models (e.g. qwen2.5, llama-3.1, deepseek)..."
-              className="w-full bg-[#0D1220] border border-white/10 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500/50 transition"
+              className="w-full bg-panel border border-line rounded-lg pl-9 pr-3 py-1.5 text-xs text-fg placeholder:text-subtle focus:outline-none focus:border-accent transition"
             />
           </div>
           <button
             type="submit"
             disabled={isSearching}
-            className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20 transition disabled:opacity-50 flex items-center gap-1.5"
+            className="px-4 py-1.5 rounded-lg text-xs font-semibold bg-accent hover:bg-accent-hover text-fg transition disabled:opacity-50 flex items-center gap-1.5"
           >
             {isSearching ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -220,12 +220,12 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
           </button>
         </form>
 
-        <div className="flex items-center gap-2 self-end sm:self-auto text-xs text-slate-400">
+        <div className="flex items-center gap-2 self-end sm:self-auto text-xs text-muted">
           <span>Sort:</span>
           <select
             value={sortBy}
             onChange={(e) => handleSortChange(e.target.value)}
-            className="bg-[#0D1220] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+            className="bg-panel border border-line rounded-lg px-2.5 py-1 text-xs text-fg focus:outline-none focus:border-accent"
           >
             <option value="downloads">Most Downloads</option>
             <option value="likes">Most Likes</option>
@@ -236,15 +236,15 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
       {/* Error Banner */}
       {(searchError || repoError) && (
-        <div className="px-6 py-2.5 bg-rose-950/40 border-b border-rose-500/30 flex items-center gap-2 text-xs text-rose-300">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+        <div className="px-6 py-2.5 bg-danger/10 border-b border-danger/40 flex items-center gap-2 text-xs text-danger">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-danger" />
           <span className="flex-1">{searchError || repoError}</span>
           <button
             onClick={() => {
               setSearchError(null);
               setRepoError(null);
             }}
-            className="text-rose-400 hover:text-rose-200 text-xs font-semibold"
+            className="text-danger hover:text-danger text-xs font-semibold"
           >
             Dismiss
           </button>
@@ -260,7 +260,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
             <div className="flex items-center justify-between">
               <button
                 onClick={() => setSelectedRepoId(null)}
-                className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition"
+                className="flex items-center gap-1.5 text-xs text-link hover:underline transition"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <span>Back to Search Results</span>
@@ -271,7 +271,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                   href={repoDetails.repo_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition"
+                  className="flex items-center gap-1 text-xs text-muted hover:text-fg transition"
                   title="View on Hugging Face"
                 >
                   <span>Hugging Face Hub</span>
@@ -281,56 +281,56 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
             </div>
 
             {isLoadingRepo ? (
-              <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-500 text-xs">
-                <RefreshCw className="w-6 h-6 animate-spin text-indigo-400" />
+              <div className="py-20 flex flex-col items-center justify-center gap-2 text-subtle text-xs">
+                <RefreshCw className="w-6 h-6 animate-spin text-link" />
                 <span>Loading repository metadata & GGUF files...</span>
               </div>
             ) : repoDetails ? (
               <div className="space-y-4">
                 {/* Repository Header Card */}
-                <div className="bg-[#0A0D17]/80 border border-white/[0.08] rounded-xl p-5 space-y-3">
+                <div className="bg-canvas border border-line rounded-md p-5 space-y-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">
+                        <span className="text-xs px-2 py-0.5 rounded bg-accent/10 text-link border border-accent font-mono">
                           {repoDetails.author}
                         </span>
-                        <h2 className="text-base font-semibold text-slate-100">
+                        <h2 className="text-base font-semibold text-fg">
                           {repoDetails.repo_name}
                         </h2>
                       </div>
-                      <p className="text-xs text-slate-400 mt-1 max-w-2xl">
+                      <p className="text-xs text-muted mt-1 max-w-2xl">
                         {repoDetails.description || "No description provided."}
                       </p>
                     </div>
 
                     <div className="flex items-center gap-3 shrink-0 text-xs">
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <Download className="w-3.5 h-3.5 text-indigo-400" />
+                      <span className="flex items-center gap-1 text-muted">
+                        <Download className="w-3.5 h-3.5 text-link" />
                         {formatDownloads(repoDetails.downloads)}
                       </span>
-                      <span className="flex items-center gap-1 text-slate-400">
-                        <Heart className="w-3.5 h-3.5 text-rose-400" />
+                      <span className="flex items-center gap-1 text-muted">
+                        <Heart className="w-3.5 h-3.5 text-danger" />
                         {repoDetails.likes}
                       </span>
                     </div>
                   </div>
 
                   {/* Badges Bar */}
-                  <div className="flex items-center gap-2 flex-wrap text-[11px] pt-1 border-t border-white/[0.04]">
-                    <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-300">
+                  <div className="flex items-center gap-2 flex-wrap text-xs pt-1 border-t border-line">
+                    <span className="px-2 py-0.5 rounded bg-raised border border-line text-fg">
                       License: {repoDetails.license || "Unknown"}
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-white/5 border border-white/10 text-slate-300">
+                    <span className="px-2 py-0.5 rounded bg-raised border border-line text-fg">
                       Revision: {repoDetails.revision}
                     </span>
-                    <span className="px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-mono">
+                    <span className="px-2 py-0.5 rounded bg-success/10 border border-success/40 text-success font-mono">
                       {repoDetails.gguf_files_count} GGUF {repoDetails.gguf_files_count === 1 ? "variant" : "variants"}
                     </span>
                     {repoDetails.model_card && (
                       <button
                         onClick={() => setShowModelCard(!showModelCard)}
-                        className="flex items-center gap-1 text-indigo-400 hover:text-indigo-300 text-[11px] ml-auto transition"
+                        className="flex items-center gap-1 text-link hover:underline text-xs ml-auto transition"
                       >
                         <FileText className="w-3 h-3" />
                         <span>{showModelCard ? "Hide Model Card" : "View Model Card"}</span>
@@ -340,7 +340,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
                   {/* Model Card Drawer */}
                   {showModelCard && repoDetails.model_card && (
-                    <div className="mt-3 p-4 bg-black/40 border border-white/[0.06] rounded-xl max-h-60 overflow-y-auto text-xs text-slate-300 whitespace-pre-wrap font-mono leading-relaxed">
+                    <div className="mt-3 p-4 bg-canvas border border-line rounded-md max-h-60 overflow-y-auto text-xs text-fg whitespace-pre-wrap font-mono leading-relaxed">
                       {repoDetails.model_card}
                     </div>
                   )}
@@ -349,21 +349,21 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                 {/* GGUF Files Section */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                      <Layers className="w-4 h-4 text-indigo-400" />
+                    <h3 className="text-sm font-semibold text-fg flex items-center gap-2">
+                      <Layers className="w-4 h-4 text-link" />
                       Available Quantization Weights
                     </h3>
 
                     {/* Quant Filter Pills */}
                     {distinctQuants.length > 1 && (
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <Filter className="w-3 h-3 text-slate-500 mr-1" />
+                        <Filter className="w-3 h-3 text-subtle mr-1" />
                         <button
                           onClick={() => setSelectedQuantFilter("ALL")}
-                          className={`px-2 py-0.5 rounded text-[10px] font-mono transition ${
+                          className={`px-2 py-0.5 rounded text-xs font-mono transition ${
                             selectedQuantFilter === "ALL"
-                              ? "bg-indigo-600 text-white"
-                              : "bg-white/5 text-slate-400 hover:text-slate-200"
+                              ? "bg-accent text-fg"
+                              : "bg-raised text-muted hover:text-fg"
                           }`}
                         >
                           All ({repoDetails.available_gguf_files.length})
@@ -372,10 +372,10 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                           <button
                             key={q}
                             onClick={() => setSelectedQuantFilter(q)}
-                            className={`px-2 py-0.5 rounded text-[10px] font-mono transition ${
+                            className={`px-2 py-0.5 rounded text-xs font-mono transition ${
                               selectedQuantFilter === q
-                                ? "bg-indigo-600 text-white"
-                                : "bg-white/5 text-slate-400 hover:text-slate-200"
+                                ? "bg-accent text-fg"
+                                : "bg-raised text-muted hover:text-fg"
                             }`}
                           >
                             {q}
@@ -387,7 +387,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
                   {/* File List */}
                   {filteredGgufFiles.length === 0 ? (
-                    <div className="p-8 text-center border border-dashed border-white/10 rounded-xl text-xs text-slate-500">
+                    <div className="p-8 text-center border border-dashed border-line rounded-md text-xs text-subtle">
                       No GGUF files found for the selected filter.
                     </div>
                   ) : (
@@ -398,18 +398,18 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                           <div
                             key={file.filename}
                             onClick={() => setSelectedFile(file)}
-                            className={`p-3.5 rounded-xl border cursor-pointer transition flex items-center justify-between gap-3 ${
+                            className={`p-3.5 rounded-md border cursor-pointer transition flex items-center justify-between gap-3 ${
                               isSelected
-                                ? "bg-indigo-950/20 border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.08)]"
-                                : "bg-[#0A0D17]/60 border-white/[0.06] hover:border-white/[0.12]"
+                                ? "bg-accent/10 border-accent"
+                                : "bg-canvas border-line hover:border-line"
                             }`}
                           >
                             <div className="flex items-center gap-3 min-w-0">
                               <div
                                 className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
                                   isSelected
-                                    ? "border-indigo-400 bg-indigo-600"
-                                    : "border-white/20 bg-transparent"
+                                    ? "border-accent bg-accent"
+                                    : "border-line bg-transparent"
                                 }`}
                               >
                                 {isSelected && (
@@ -419,15 +419,15 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
                               <div className="space-y-0.5 min-w-0">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs font-medium text-slate-100 truncate">
+                                  <span className="text-xs font-medium text-fg truncate">
                                     {file.filename}
                                   </span>
-                                  <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/25">
+                                  <span className="text-xs font-mono font-semibold px-2 py-0.5 rounded bg-accent/10 text-link border border-accent">
                                     {file.quantization}
                                   </span>
                                 </div>
                                 {file.sha256 && (
-                                  <div className="text-[10px] font-mono text-slate-500 truncate" title={file.sha256}>
+                                  <div className="text-xs font-mono text-subtle truncate" title={file.sha256}>
                                     SHA: {file.sha256.slice(0, 16)}...
                                   </div>
                                 )}
@@ -435,11 +435,11 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                             </div>
 
                             <div className="text-right shrink-0">
-                              <span className="text-xs font-mono font-medium text-slate-200 block">
+                              <span className="text-xs font-mono font-medium text-fg block">
                                 {file.size_gb ? `${file.size_gb} GB` : "Size unknown"}
                               </span>
                               {file.size_bytes && (
-                                <span className="text-[10px] font-mono text-slate-500 block">
+                                <span className="text-xs font-mono text-subtle block">
                                   {(file.size_bytes / 1024 / 1024).toFixed(0)} MB
                                 </span>
                               )}
@@ -453,12 +453,12 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
                 {/* Sticky Selection & Prepare Download Bar */}
                 {selectedFile && (
-                  <div className="sticky bottom-0 bg-[#0A0D17] border border-indigo-500/30 rounded-xl p-4 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 backdrop-blur-md">
+                  <div className="sticky bottom-0 bg-canvas border border-accent rounded-md p-4 shadow-menu flex flex-col sm:flex-row items-center justify-between gap-3">
                     <div className="space-y-0.5 w-full sm:w-auto">
-                      <div className="text-[11px] text-slate-400">Selected Quantization File:</div>
-                      <div className="text-xs font-medium text-slate-100 flex items-center gap-2">
+                      <div className="text-xs text-muted">Selected Quantization File:</div>
+                      <div className="text-xs font-medium text-fg flex items-center gap-2">
                         <span className="truncate max-w-sm">{selectedFile.filename}</span>
-                        <span className="text-indigo-400 font-mono font-semibold">
+                        <span className="text-link font-mono font-semibold">
                           ({selectedFile.size_gb ? `${selectedFile.size_gb} GB` : "Unknown size"})
                         </span>
                       </div>
@@ -466,7 +466,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
                     <button
                       onClick={handlePrepareDownload}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition shrink-0"
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg text-xs font-semibold bg-accent hover:bg-accent-hover text-fg transition shrink-0"
                     >
                       <Download className="w-4 h-4" />
                       <span>Prepare Download</span>
@@ -479,24 +479,24 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
         ) : (
           /* ================= SEARCH RESULTS GRID ================= */
           <div className="space-y-4 max-w-5xl mx-auto">
-            <div className="flex items-center justify-between text-xs text-slate-400">
+            <div className="flex items-center justify-between text-xs text-muted">
               <span>
                 Found <strong>{searchResults.length}</strong> GGUF repositories for "
-                <span className="text-slate-200">{query}</span>"
+                <span className="text-fg">{query}</span>"
               </span>
             </div>
 
             {isSearching ? (
-              <div className="py-20 flex flex-col items-center justify-center gap-2 text-slate-500 text-xs">
-                <RefreshCw className="w-6 h-6 animate-spin text-indigo-400" />
+              <div className="py-20 flex flex-col items-center justify-center gap-2 text-subtle text-xs">
+                <RefreshCw className="w-6 h-6 animate-spin text-link" />
                 <span>Searching Hugging Face Hub...</span>
               </div>
             ) : searchResults.length === 0 ? (
-              <div className="py-20 text-center border border-dashed border-white/10 rounded-2xl bg-white/[0.01] p-8">
-                <Search className="w-10 h-10 mx-auto text-slate-600 mb-3" />
-                <h3 className="text-sm font-medium text-slate-300">No GGUF models matched your query</h3>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  Try searching for popular open-weight models like <code className="text-indigo-300">qwen2.5</code>, <code className="text-indigo-300">llama-3.1</code>, or <code className="text-indigo-300">phi-3</code>.
+              <div className="py-20 text-center border border-dashed border-line rounded-lg bg-raised p-8">
+                <Search className="w-10 h-10 mx-auto text-subtle mb-3" />
+                <h3 className="text-sm font-medium text-fg">No GGUF models matched your query</h3>
+                <p className="text-xs text-subtle mt-1 max-w-sm mx-auto">
+                  Try searching for popular open-weight models like <code className="text-link">qwen2.5</code>, <code className="text-link">llama-3.1</code>, or <code className="text-link">phi-3</code>.
                 </p>
               </div>
             ) : (
@@ -505,43 +505,43 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                   <div
                     key={repo.repo_id}
                     onClick={() => handleOpenRepo(repo.repo_id)}
-                    className="p-4 rounded-xl border border-white/[0.07] bg-[#0A0D17]/60 hover:border-indigo-500/40 hover:bg-[#0D1222]/80 transition cursor-pointer flex flex-col justify-between gap-3 group"
+                    className="p-4 rounded-md border border-line bg-canvas hover:border-accent hover:bg-panel transition cursor-pointer flex flex-col justify-between gap-3 group"
                   >
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-white/5 text-slate-400 border border-white/5">
+                          <span className="text-xs font-mono px-1.5 py-0.5 rounded bg-raised text-muted border border-line">
                             {repo.author}
                           </span>
-                          <h4 className="text-sm font-semibold text-slate-100 group-hover:text-indigo-300 transition truncate mt-1">
+                          <h4 className="text-sm font-semibold text-fg group-hover:text-link transition truncate mt-1">
                             {repo.repo_name}
                           </h4>
                         </div>
                         {repo.license && (
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-slate-400 border border-white/10 shrink-0">
+                          <span className="text-xs px-2 py-0.5 rounded bg-raised text-muted border border-line shrink-0">
                             {repo.license}
                           </span>
                         )}
                       </div>
 
-                      <p className="text-xs text-slate-400 line-clamp-2">
+                      <p className="text-xs text-muted line-clamp-2">
                         {repo.description || "No description provided."}
                       </p>
                     </div>
 
-                    <div className="flex items-center justify-between text-xs text-slate-500 pt-2 border-t border-white/[0.04]">
+                    <div className="flex items-center justify-between text-xs text-subtle pt-2 border-t border-line">
                       <div className="flex items-center gap-3">
                         <span className="flex items-center gap-1">
-                          <Download className="w-3.5 h-3.5 text-indigo-400" />
+                          <Download className="w-3.5 h-3.5 text-link" />
                           {formatDownloads(repo.downloads)}
                         </span>
                         <span className="flex items-center gap-1">
-                          <Heart className="w-3.5 h-3.5 text-rose-400" />
+                          <Heart className="w-3.5 h-3.5 text-danger" />
                           {repo.likes}
                         </span>
                       </div>
 
-                      <span className="text-[11px] text-indigo-400 group-hover:translate-x-0.5 transition font-medium">
+                      <span className="text-xs text-link group- transition font-medium">
                         View GGUF Files →
                       </span>
                     </div>
@@ -555,55 +555,55 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
       {/* Prepare Download Preview Modal (Stage 3 Verification Modal) */}
       {showPreparedModal && preparedDownload && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-[#0D1220] border border-indigo-500/30 rounded-2xl p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60">
+          <div className="w-full max-w-lg bg-panel border border-accent rounded-lg p-6 shadow-menu space-y-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400">
+              <div className="p-3 rounded-md bg-accent/10 border border-accent text-link">
                 <FileCheck className="w-6 h-6" />
               </div>
               <div>
-                <h3 className="text-base font-semibold text-slate-100">
+                <h3 className="text-base font-semibold text-fg">
                   Download Request Prepared
                 </h3>
-                <p className="text-xs text-slate-400">
+                <p className="text-xs text-muted">
                   Stage 3 file selection and validation complete.
                 </p>
               </div>
             </div>
 
-            <div className="bg-black/30 border border-white/5 rounded-xl p-3.5 text-xs space-y-2 font-mono text-slate-300">
+            <div className="bg-canvas border border-line rounded-md p-3.5 text-xs space-y-2 font-mono text-fg">
               <div>
-                <span className="text-slate-500">Repository:</span>{" "}
-                <span className="text-indigo-300 font-semibold">{preparedDownload.repo_id}</span>
+                <span className="text-subtle">Repository:</span>{" "}
+                <span className="text-link font-semibold">{preparedDownload.repo_id}</span>
               </div>
               <div>
-                <span className="text-slate-500">Filename:</span>{" "}
-                <span className="text-slate-200">{preparedDownload.filename}</span>
+                <span className="text-subtle">Filename:</span>{" "}
+                <span className="text-fg">{preparedDownload.filename}</span>
               </div>
               <div className="flex justify-between">
                 <div>
-                  <span className="text-slate-500">Quantization:</span>{" "}
-                  <span className="text-emerald-400">{preparedDownload.quantization}</span>
+                  <span className="text-subtle">Quantization:</span>{" "}
+                  <span className="text-success">{preparedDownload.quantization}</span>
                 </div>
                 <div>
-                  <span className="text-slate-500">Size:</span>{" "}
+                  <span className="text-subtle">Size:</span>{" "}
                   <span>{preparedDownload.size_gb} GB</span>
                 </div>
               </div>
               <div>
-                <span className="text-slate-500">Destination:</span>{" "}
-                <span className="text-slate-400">{preparedDownload.destination_path}</span>
+                <span className="text-subtle">Destination:</span>{" "}
+                <span className="text-muted">{preparedDownload.destination_path}</span>
               </div>
               <div className="truncate">
-                <span className="text-slate-500">Source:</span>{" "}
-                <span className="text-slate-500 truncate" title={preparedDownload.download_url}>
+                <span className="text-subtle">Source:</span>{" "}
+                <span className="text-subtle truncate" title={preparedDownload.download_url}>
                   {preparedDownload.download_url}
                 </span>
               </div>
             </div>
 
-            <div className="p-3 bg-indigo-950/20 border border-indigo-500/20 rounded-xl text-xs text-indigo-200 flex items-start gap-2">
-              <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+            <div className="p-3 bg-accent/10 border border-accent rounded-md text-xs text-link flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-link shrink-0 mt-0.5" />
               <span>
                 <strong>Asynchronous Download Ready:</strong> The model will be downloaded in the background with HTTP Range resume, checksum verification, and automatic registration into your Local Model Library.
               </span>
@@ -612,14 +612,14 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 onClick={() => setShowPreparedModal(false)}
-                className="px-4 py-2 rounded-xl text-xs font-medium bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 transition"
+                className="px-4 py-2 rounded-md text-xs font-medium bg-raised hover:bg-raised text-fg border border-line transition"
               >
                 Cancel
               </button>
               <button
                 onClick={handleStartDownload}
                 disabled={isEnqueueing}
-                className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition disabled:opacity-50"
+                className="flex items-center gap-1.5 px-5 py-2 rounded-md text-xs font-semibold bg-accent hover:bg-accent-hover text-fg transition disabled:opacity-50"
               >
                 {isEnqueueing ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />

@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, FolderOpen, Wrench, X } from "lucide-react";
+import { AlertTriangle, Folder, X } from "lucide-react";
 import { SMALL_AGENT_MODEL_B, modelSizeB } from "../services/agent";
 
 interface AgentBarProps {
@@ -27,42 +27,34 @@ export const AgentBar: React.FC<AgentBarProps> = ({
   const folderName = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : null;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 mb-2 px-1 text-[11px] select-none">
-      <button
-        type="button"
-        role="switch"
-        aria-checked={enabled}
-        disabled={disabled}
-        onClick={() => onToggle(!enabled)}
-        title={enabled ? "Agent mode is on: the model may use read-only tools" : "Turn on agent mode"}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border transition disabled:opacity-40 ${
-          enabled
-            ? "bg-indigo-600/20 border-indigo-500/50 text-indigo-200"
-            : "bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-slate-200"
-        }`}
-      >
-        <Wrench className="w-3.5 h-3.5" />
-        <span className="font-medium">Agent mode</span>
-        <span className={`ml-0.5 w-6 h-3.5 rounded-full relative transition ${enabled ? "bg-indigo-500" : "bg-slate-600"}`}>
-          <span className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all ${enabled ? "left-3" : "left-0.5"}`} />
-        </span>
-      </button>
+    <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs select-none">
+      <label className={`flex items-center gap-2 text-muted ${disabled ? "opacity-50" : "cursor-pointer hover:text-fg"}`}>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          disabled={disabled}
+          onClick={() => onToggle(!enabled)}
+          title={enabled ? "Agent mode is on: the model may use tools" : "Turn on agent mode"}
+          className={`relative w-7 h-4 rounded-full transition-colors ${enabled ? "bg-accent" : "bg-line"}`}
+        >
+          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white transition-[left] ${enabled ? "left-3.5" : "left-0.5"}`} />
+        </button>
+        <span className={enabled ? "text-fg" : ""}>Agent mode</span>
+      </label>
 
       {enabled && (
         <>
           {workspace ? (
-            <span
-              className="flex items-center gap-1 pl-2 pr-1 py-1 rounded-lg bg-white/[0.04] border border-white/[0.08] text-slate-300 max-w-[260px]"
-              title={workspace}
-            >
-              <FolderOpen className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+            <span className="flex items-center gap-1 h-6 pl-1.5 pr-0.5 rounded-md border border-line text-fg max-w-[260px]" title={workspace}>
+              <Folder className="w-3.5 h-3.5 text-muted shrink-0" />
               <span className="truncate">{folderName}</span>
               <button
                 type="button"
                 disabled={disabled}
                 onClick={onClearWorkspace}
-                className="p-0.5 rounded hover:bg-white/10 text-slate-500 hover:text-slate-200 disabled:opacity-40"
-                title="Close the workspace folder (file tools off)"
+                className="p-0.5 rounded text-subtle hover:text-fg disabled:opacity-50"
+                title="Close the folder (file tools off)"
                 aria-label="Close workspace folder"
               >
                 <X className="w-3 h-3" />
@@ -73,24 +65,22 @@ export const AgentBar: React.FC<AgentBarProps> = ({
             type="button"
             disabled={disabled}
             onClick={onChooseWorkspace}
-            className="flex items-center gap-1 px-2 py-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition disabled:opacity-40"
-            title="Choose the folder the agent may read"
+            className="h-6 px-1.5 rounded-md text-link hover:bg-raised disabled:opacity-50"
           >
-            <FolderOpen className="w-3.5 h-3.5" />
-            <span>{workspace ? "Change folder" : "Choose workspace folder"}</span>
+            {workspace ? "Change folder" : "Choose folder"}
           </button>
-          <span className="text-slate-500">
+          <span className="text-subtle">
             {workspace
-              ? "Reads files in this folder; asks you before every change (with Undo). Never deletes or runs anything."
+              ? "Reads files here; asks before every change. Never deletes or runs anything."
               : "No folder: time, calculator and chat search only."}
           </span>
         </>
       )}
 
       {smallModel && (
-        <span className="flex items-center gap-1 text-amber-300/90" title="Measured in M5 Phase A">
+        <span className="flex items-center gap-1 text-warning" title="Measured in M5 Phase A">
           <AlertTriangle className="w-3.5 h-3.5" />
-          <span>Small models often misuse tools; Qwen3.5 4B, Gemma 4 E4B or larger work much better.</span>
+          Small models often misuse tools; Qwen3.5 4B or Gemma 4 E4B work much better.
         </span>
       )}
     </div>

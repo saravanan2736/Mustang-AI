@@ -51,23 +51,23 @@ export const BackupList: React.FC<{ compact?: boolean }> = ({ compact }) => {
     }
   };
 
-  if (backups === null) return <p className="text-[11px] text-slate-400">Loading backups…</p>;
-  if (backups.length === 0) return <p className="text-[11px] text-slate-400">No backups yet. One is made automatically before every update and database upgrade.</p>;
+  if (backups === null) return <p className="text-xs text-muted">Loading backups…</p>;
+  if (backups.length === 0) return <p className="text-xs text-muted">No backups yet. One is made automatically before every update and database upgrade.</p>;
 
   return (
     <div className="space-y-2">
       <ul className="space-y-1.5">
         {backups.slice(0, compact ? 5 : 15).map((b) => (
-          <li key={b.name} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-[#0D1220] border border-white/[0.08] text-[11px]">
+          <li key={b.name} className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-panel border border-line text-xs">
             <div className="min-w-0">
-              <p className="text-slate-200">{KIND_LABEL[b.kind]} · {formatTime(b.modified)}</p>
-              <p className="text-slate-500 font-mono truncate">{b.name} · {formatSize(b.size)}</p>
+              <p className="text-fg">{KIND_LABEL[b.kind]} · {formatTime(b.modified)}</p>
+              <p className="text-subtle font-mono truncate">{b.name} · {formatSize(b.size)}</p>
             </div>
             <button
               type="button"
               disabled={busy !== null}
               onClick={() => restore(b)}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#141A29] border border-white/10 hover:border-white/20 text-slate-200 disabled:opacity-50 shrink-0 transition"
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-raised border border-line hover:border-line text-fg disabled:opacity-50 shrink-0 transition"
             >
               <ArchiveRestore className="w-3.5 h-3.5" />
               {busy === b.name ? "Restoring…" : "Restore"}
@@ -75,7 +75,7 @@ export const BackupList: React.FC<{ compact?: boolean }> = ({ compact }) => {
           </li>
         ))}
       </ul>
-      {message && <p className="text-xs text-amber-300">{message}</p>}
+      {message && <p className="text-xs text-warning">{message}</p>}
     </div>
   );
 };
@@ -98,7 +98,7 @@ export const UpdatesSection: React.FC = () => {
 
   if (!settings) return null;
   if (!settings.configured) {
-    return <p className="text-[11px] text-slate-400">Version {settings.current_version}. Automatic updates are not configured for this build; install new versions with the installer.</p>;
+    return <p className="text-xs text-muted">Version {settings.current_version}. Automatic updates are not configured for this build; install new versions with the installer.</p>;
   }
 
   const check = async () => {
@@ -127,40 +127,40 @@ export const UpdatesSection: React.FC = () => {
   const pct = progress?.total ? Math.round((progress.downloaded / progress.total) * 100) : null;
 
   return (
-    <div className="space-y-2.5 text-[11px]">
+    <div className="space-y-2.5 text-xs">
       <div className="flex items-center justify-between gap-3">
-        <span className="text-slate-300">Installed version {settings.current_version}</span>
+        <span className="text-fg">Installed version {settings.current_version}</span>
         <button
           type="button"
           disabled={state !== "idle"}
           onClick={check}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0D1220] border border-white/10 hover:border-white/20 text-slate-200 text-xs disabled:opacity-50 transition"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-panel border border-line hover:border-line text-fg text-xs disabled:opacity-50 transition"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${state === "checking" ? "animate-spin" : ""}`} />
           Check for updates
         </button>
       </div>
-      {info && !info.available && <p className="text-emerald-400">Mustang AI is up to date.</p>}
+      {info && !info.available && <p className="text-success">Mustang AI is up to date.</p>}
       {info?.available && (
-        <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 space-y-2">
-          <p className="text-indigo-200 font-medium">Version {info.version} is available.</p>
-          {info.notes && <p className="text-slate-300 whitespace-pre-line">{info.notes}</p>}
-          <p className="text-slate-400">Your conversations are backed up first. Mustang AI closes, updates and reopens.</p>
+        <div className="p-3 rounded-md bg-accent/10 border border-accent space-y-2">
+          <p className="text-link font-medium">Version {info.version} is available.</p>
+          {info.notes && <p className="text-fg whitespace-pre-line">{info.notes}</p>}
+          <p className="text-muted">Your conversations are backed up first. Mustang AI closes, updates and reopens.</p>
           <button
             type="button"
             disabled={state !== "idle"}
             onClick={install}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium disabled:opacity-60 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-accent hover:bg-accent-hover text-fg text-xs font-medium disabled:opacity-60 transition"
           >
             <Download className="w-3.5 h-3.5" />
             {state === "installing" ? (pct !== null ? `Downloading… ${pct}%` : "Installing…") : `Install ${info.version}`}
           </button>
         </div>
       )}
-      <label className="flex items-center gap-2 text-slate-300">
+      <label className="flex items-center gap-2 text-fg">
         <input
           type="checkbox"
-          className="h-3.5 w-3.5 accent-indigo-500"
+          className="h-3.5 w-3.5 accent-[rgb(var(--accent))]"
           checked={settings.auto_check}
           onChange={async (e) => {
             const enabled = e.target.checked;
@@ -170,7 +170,7 @@ export const UpdatesSection: React.FC = () => {
         />
         Check for updates automatically when Mustang AI starts
       </label>
-      {error && <p className="text-rose-400">{error}</p>}
+      {error && <p className="text-danger">{error}</p>}
     </div>
   );
 };

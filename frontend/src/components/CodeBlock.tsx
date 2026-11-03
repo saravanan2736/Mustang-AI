@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Check, Copy, Terminal } from "lucide-react";
+import { Check, Copy } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
 import "prismjs/components/prism-typescript";
@@ -26,11 +26,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
   useEffect(() => {
     try {
       const grammar = Prism.languages[cleanLang] || Prism.languages.text;
-      if (grammar) {
-        setHighlightedCode(Prism.highlight(code, grammar, cleanLang));
-      } else {
-        setHighlightedCode(code);
-      }
+      setHighlightedCode(grammar ? Prism.highlight(code, grammar, cleanLang) : code);
     } catch {
       setHighlightedCode(code);
     }
@@ -43,39 +39,20 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
   };
 
   return (
-    <div className="my-3 rounded-xl overflow-hidden border border-white/10 bg-[#090C15] shadow-lg">
-      {/* Code Header Bar */}
-      <div className="flex items-center justify-between px-3.5 py-1.5 bg-[#0D1220] border-b border-white/[0.08] select-none text-xs">
-        <div className="flex items-center gap-1.5 text-slate-400 font-mono font-medium">
-          <Terminal className="w-3.5 h-3.5 text-indigo-400" />
-          <span>{cleanLang.toUpperCase()}</span>
-        </div>
+    <div className="my-3 rounded-md overflow-hidden border border-line bg-panel not-prose">
+      <div className="flex items-center justify-between h-8 px-3 border-b border-line select-none text-xs text-muted">
+        <span>{cleanLang === "text" ? "" : cleanLang}</span>
         <button
           onClick={copyCode}
-          className="flex items-center gap-1 px-2 py-0.5 rounded text-[11px] text-slate-400 hover:text-slate-200 hover:bg-white/[0.06] transition"
+          className="flex items-center gap-1 h-6 px-1.5 rounded text-muted hover:text-fg hover:bg-raised transition-colors"
         >
-          {copied ? (
-            <>
-              <Check className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="text-emerald-400">Copied!</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3.5 h-3.5" />
-              <span>Copy</span>
-            </>
-          )}
+          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+          <span>{copied ? "Copied" : "Copy"}</span>
         </button>
       </div>
-
-      {/* Code Content */}
-      <pre className="p-3.5 overflow-x-auto font-mono text-[13px] leading-relaxed">
-        <code
-          className={`language-${cleanLang}`}
-          dangerouslySetInnerHTML={{ __html: highlightedCode }}
-        />
+      <pre className="p-3 overflow-x-auto font-mono text-[13px] leading-relaxed">
+        <code className={`language-${cleanLang}`} dangerouslySetInnerHTML={{ __html: highlightedCode }} />
       </pre>
     </div>
   );
 };
-

@@ -119,32 +119,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-2xl bg-[#090C15] border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60">
+      <div className="w-full max-w-2xl bg-canvas border border-line rounded-lg shadow-menu overflow-hidden flex flex-col max-h-[88vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-[#0D1220]">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-line bg-panel">
           <div className="flex items-center gap-2.5">
-            <div className="p-1.5 rounded-lg bg-indigo-600/20 text-indigo-400">
+            <div className="p-1.5 rounded-lg bg-accent/10 text-link">
               <Sliders className="w-4 h-4" />
             </div>
-            <h2 className="text-base font-semibold text-white">Application Settings</h2>
+            <h2 className="text-base font-semibold text-fg">Application Settings</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.08] transition"
+            className="p-1.5 rounded-lg text-muted hover:text-fg hover:bg-raised transition"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-white/[0.06] bg-[#07090E] px-6 text-xs">
+        <div className="flex border-b border-line bg-canvas px-6 text-xs">
           <button
             onClick={() => setActiveTab("inference")}
             className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 transition ${
               activeTab === "inference"
-                ? "border-indigo-500 text-indigo-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-accent text-link"
+                : "border-transparent text-muted hover:text-fg"
             }`}
           >
             <Sliders className="w-3.5 h-3.5" />
@@ -154,8 +154,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={() => setActiveTab("profiles")}
             className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 transition ${
               activeTab === "profiles"
-                ? "border-indigo-500 text-indigo-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-accent text-link"
+                : "border-transparent text-muted hover:text-fg"
             }`}
           >
             <User className="w-3.5 h-3.5" />
@@ -165,8 +165,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={() => setActiveTab("hardware")}
             className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 transition ${
               activeTab === "hardware"
-                ? "border-indigo-500 text-indigo-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-accent text-link"
+                : "border-transparent text-muted hover:text-fg"
             }`}
           >
             <Cpu className="w-3.5 h-3.5" />
@@ -177,8 +177,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClick={() => setActiveTab("desktop")}
               className={`flex items-center gap-2 py-3 px-3 font-medium border-b-2 transition ${
                 activeTab === "desktop"
-                  ? "border-indigo-500 text-indigo-400"
-                  : "border-transparent text-slate-400 hover:text-slate-200"
+                  ? "border-accent text-link"
+                  : "border-transparent text-muted hover:text-fg"
               }`}
             >
               <Monitor className="w-3.5 h-3.5" />
@@ -195,8 +195,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Temperature */}
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="font-medium text-slate-200">Temperature</span>
-                  <span className="font-mono text-indigo-400">{settings.temperature.toFixed(2)}</span>
+                  <span className="font-medium text-fg">Temperature</span>
+                  <span className="font-mono text-link">{settings.temperature.toFixed(2)}</span>
                 </div>
                 <input
                   type="range"
@@ -207,9 +207,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) =>
                     setSettings({ ...settings, temperature: parseFloat(e.target.value) })
                   }
-                  className="w-full accent-indigo-500 cursor-pointer"
+                  className="w-full accent-[rgb(var(--accent))] cursor-pointer"
                 />
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-xs text-muted mt-1">
                   Lower values make responses more focused and deterministic; higher values increase variety.
                 </p>
               </div>
@@ -217,8 +217,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Top-P */}
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="font-medium text-slate-200">Top-P (Nucleus Sampling)</span>
-                  <span className="font-mono text-indigo-400">{settings.top_p.toFixed(2)}</span>
+                  <span className="font-medium text-fg">Top-P (Nucleus Sampling)</span>
+                  <span className="font-mono text-link">{settings.top_p.toFixed(2)}</span>
                 </div>
                 <input
                   type="range"
@@ -229,9 +229,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) =>
                     setSettings({ ...settings, top_p: parseFloat(e.target.value) })
                   }
-                  className="w-full accent-indigo-500 cursor-pointer"
+                  className="w-full accent-[rgb(var(--accent))] cursor-pointer"
                 />
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-xs text-muted mt-1">
                   Limits next-token candidate pool to cumulative probability threshold.
                 </p>
               </div>
@@ -239,8 +239,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Top-K */}
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="font-medium text-slate-200">Top-K</span>
-                  <span className="font-mono text-indigo-400">{settings.top_k}</span>
+                  <span className="font-medium text-fg">Top-K</span>
+                  <span className="font-mono text-link">{settings.top_k}</span>
                 </div>
                 <input
                   type="range"
@@ -251,15 +251,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) =>
                     setSettings({ ...settings, top_k: parseInt(e.target.value, 10) })
                   }
-                  className="w-full accent-indigo-500 cursor-pointer"
+                  className="w-full accent-[rgb(var(--accent))] cursor-pointer"
                 />
               </div>
 
               {/* Repetition Penalty */}
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="font-medium text-slate-200">Repetition Penalty</span>
-                  <span className="font-mono text-indigo-400">{settings.repeat_penalty.toFixed(2)}</span>
+                  <span className="font-medium text-fg">Repetition Penalty</span>
+                  <span className="font-mono text-link">{settings.repeat_penalty.toFixed(2)}</span>
                 </div>
                 <input
                   type="range"
@@ -270,9 +270,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) =>
                     setSettings({ ...settings, repeat_penalty: parseFloat(e.target.value) })
                   }
-                  className="w-full accent-indigo-500 cursor-pointer"
+                  className="w-full accent-[rgb(var(--accent))] cursor-pointer"
                 />
-                <p className="text-[11px] text-slate-400 mt-1">
+                <p className="text-xs text-muted mt-1">
                   Penalizes repetitive vocabulary patterns. 1.0 is neutral, 1.1 - 1.15 recommended.
                 </p>
               </div>
@@ -280,8 +280,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {/* Max Tokens */}
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="font-medium text-slate-200">Maximum Generation Length</span>
-                  <span className="font-mono text-indigo-400">{settings.max_tokens} tokens</span>
+                  <span className="font-medium text-fg">Maximum Generation Length</span>
+                  <span className="font-mono text-link">{settings.max_tokens} tokens</span>
                 </div>
                 <input
                   type="range"
@@ -292,7 +292,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onChange={(e) =>
                     setSettings({ ...settings, max_tokens: parseInt(e.target.value, 10) })
                   }
-                  className="w-full accent-indigo-500 cursor-pointer"
+                  className="w-full accent-[rgb(var(--accent))] cursor-pointer"
                 />
               </div>
             </div>
@@ -302,13 +302,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === "profiles" && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-muted">
                   Select, customize, or create assistant profiles with customized system prompts.
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowNewProfileForm(!showNewProfileForm)}
-                  className="flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 font-medium px-2.5 py-1 rounded-lg bg-indigo-600/10 border border-indigo-500/20"
+                  className="flex items-center gap-1.5 text-xs text-link hover:underline font-medium px-2.5 py-1 rounded-lg bg-accent/10 border border-accent"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>New Profile</span>
@@ -319,52 +319,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {showNewProfileForm && (
                 <form
                   onSubmit={handleCreateProfile}
-                  className="p-4 rounded-xl bg-[#0D1220] border border-indigo-500/30 space-y-3 animate-fadeIn"
+                  className="p-4 rounded-md bg-panel border border-accent space-y-3"
                 >
-                  <h4 className="text-xs font-semibold text-white">Create Custom Assistant Profile</h4>
+                  <h4 className="text-xs font-semibold text-fg">Create Custom Assistant Profile</h4>
                   <div>
-                    <label className="text-[11px] text-slate-400 block mb-1">Profile Name</label>
+                    <label className="text-xs text-muted block mb-1">Profile Name</label>
                     <input
                       type="text"
                       required
                       placeholder="e.g. Legal Contract Analyst"
                       value={newProfileName}
                       onChange={(e) => setNewProfileName(e.target.value)}
-                      className="w-full bg-[#07090E] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-canvas border border-line rounded-lg px-3 py-1.5 text-xs text-fg focus:outline-none focus:border-accent"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-400 block mb-1">Short Description</label>
+                    <label className="text-xs text-muted block mb-1">Short Description</label>
                     <input
                       type="text"
                       placeholder="e.g. Reviews clause language and identifies liabilities"
                       value={newProfileDesc}
                       onChange={(e) => setNewProfileDesc(e.target.value)}
-                      className="w-full bg-[#07090E] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-canvas border border-line rounded-lg px-3 py-1.5 text-xs text-fg focus:outline-none focus:border-accent"
                     />
                   </div>
                   <div>
-                    <label className="text-[11px] text-slate-400 block mb-1">System Instructions</label>
+                    <label className="text-xs text-muted block mb-1">System Instructions</label>
                     <textarea
                       required
                       rows={3}
                       placeholder="You are an expert contract lawyer..."
                       value={newProfilePrompt}
                       onChange={(e) => setNewProfilePrompt(e.target.value)}
-                      className="w-full bg-[#07090E] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 resize-none"
+                      className="w-full bg-canvas border border-line rounded-lg px-3 py-1.5 text-xs text-fg focus:outline-none focus:border-accent resize-none"
                     />
                   </div>
                   <div className="flex justify-end gap-2 pt-1">
                     <button
                       type="button"
                       onClick={() => setShowNewProfileForm(false)}
-                      className="px-3 py-1 text-xs text-slate-400 hover:text-white"
+                      className="px-3 py-1 text-xs text-muted hover:text-fg"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
-                      className="px-3 py-1 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-lg"
+                      className="px-3 py-1 text-xs bg-accent hover:bg-accent-hover text-fg font-medium rounded-lg"
                     >
                       Create Profile
                     </button>
@@ -380,32 +380,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div
                       key={p.id}
                       onClick={() => setSettings({ ...settings, default_profile: p.id })}
-                      className={`p-3.5 rounded-xl border text-xs cursor-pointer transition flex items-start justify-between ${
+                      className={`p-3.5 rounded-md border text-xs cursor-pointer transition flex items-start justify-between ${
                         isSelected
-                          ? "bg-indigo-600/15 border-indigo-500/50 shadow-subtle"
-                          : "bg-[#0D1220]/60 border-white/[0.06] hover:border-white/10"
+                          ? "bg-accent/10 border-accent"
+                          : "bg-panel border-line hover:border-line"
                       }`}
                     >
                       <div className="flex-1 pr-4">
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="font-semibold text-white">{p.name}</span>
+                          <span className="font-semibold text-fg">{p.name}</span>
                           {p.is_builtin ? (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-800 text-slate-300 font-mono">
+                            <span className="px-1.5 py-0.2 rounded text-xs bg-raised text-fg font-mono">
                               Built-in
                             </span>
                           ) : (
-                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-indigo-900/60 text-indigo-300 font-mono">
+                            <span className="px-1.5 py-0.2 rounded text-xs bg-accent/10 text-link font-mono">
                               Custom
                             </span>
                           )}
                           {isSelected && (
-                            <span className="text-[10px] text-indigo-400 font-medium">● Active Default</span>
+                            <span className="text-xs text-link font-medium">● Active Default</span>
                           )}
                         </div>
-                        <p className="text-slate-400 text-[11px] leading-relaxed mb-2">
+                        <p className="text-muted text-xs leading-relaxed mb-2">
                           {p.description}
                         </p>
-                        <p className="text-[11px] font-mono text-slate-400 line-clamp-2 bg-[#07090E]/60 p-1.5 rounded">
+                        <p className="text-xs font-mono text-muted line-clamp-2 bg-canvas p-1.5 rounded">
                           {p.system_prompt}
                         </p>
                       </div>
@@ -416,7 +416,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             e.stopPropagation();
                             handleDeleteProfile(p.id);
                           }}
-                          className="p-1 text-slate-400 hover:text-rose-400 transition"
+                          className="p-1 text-muted hover:text-danger transition"
                           title="Delete profile"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -436,7 +436,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeTab === "hardware" && (
             <div className="space-y-5">
               <div>
-                <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                <label className="text-xs font-medium text-fg block mb-1.5">
                   Default Context Window Size
                 </label>
                 <div className="grid grid-cols-4 gap-2">
@@ -445,27 +445,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       key={ctx}
                       type="button"
                       onClick={() => setSettings({ ...settings, context_size: ctx })}
-                      className={`py-2 px-3 rounded-xl text-xs font-mono font-medium border transition ${
+                      className={`py-2 px-3 rounded-md text-xs font-mono font-medium border transition ${
                         settings.context_size === ctx
-                          ? "bg-indigo-600 text-white border-indigo-400 shadow-indigo-glow"
-                          : "bg-[#0D1220] border-white/10 text-slate-300 hover:border-white/20"
+                          ? "bg-accent text-fg border-accent"
+                          : "bg-panel border-line text-fg hover:border-line"
                       }`}
                     >
                       {ctx} tokens
                     </button>
                   ))}
                 </div>
-                <p className="text-[11px] text-slate-400 mt-2">
+                <p className="text-xs text-muted mt-2">
                   Larger context sizes allocate more VRAM for the KV cache. 4,096 tokens fits comfortably on 8GB VRAM.
                 </p>
               </div>
 
-              <div className="p-4 rounded-xl bg-[#0D1220] border border-white/[0.08] text-xs space-y-2">
-                <div className="flex items-center gap-2 font-semibold text-white">
-                  <Cpu className="w-4 h-4 text-indigo-400" />
+              <div className="p-4 rounded-md bg-panel border border-line text-xs space-y-2">
+                <div className="flex items-center gap-2 font-semibold text-fg">
+                  <Cpu className="w-4 h-4 text-link" />
                   <span>Target GPU Configuration</span>
                 </div>
-                <p className="text-slate-400 leading-relaxed text-[11px]">
+                <p className="text-muted leading-relaxed text-xs">
                   Configured for NVIDIA RTX 5050 Laptop GPU (8GB VRAM) and 24GB DDR5 System RAM. CUDA acceleration and Flash Attention are automatically activated.
                 </p>
               </div>
@@ -475,10 +475,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Footer Actions (generation settings; the Desktop tab applies changes immediately) */}
         {activeTab !== "desktop" && (
-        <div className="flex items-center justify-between px-6 py-4 border-t border-white/[0.08] bg-[#0D1220]">
+        <div className="flex items-center justify-between px-6 py-4 border-t border-line bg-panel">
           <button
             onClick={handleResetDefaults}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-slate-400 hover:text-white transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-muted hover:text-fg transition"
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Reset Defaults</span>
@@ -486,12 +486,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           <div className="flex items-center gap-3">
             {saveSuccess && (
-              <span className="text-xs text-emerald-400 font-medium">Settings saved!</span>
+              <span className="text-xs text-success font-medium">Settings saved!</span>
             )}
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs shadow-indigo-glow transition disabled:opacity-50"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-md bg-accent hover:bg-accent-hover text-fg font-medium text-xs transition disabled:opacity-50"
             >
               <Save className="w-3.5 h-3.5" />
               <span>{isSaving ? "Saving..." : "Save Settings"}</span>

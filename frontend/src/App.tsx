@@ -44,7 +44,6 @@ export default function App() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [externalPrompt, setExternalPrompt] = useState<string | undefined>();
 
   // Agent mode of the open chat (saved per conversation; a new chat starts with it off)
   const [agentEnabled, setAgentEnabled] = useState(false);
@@ -311,71 +310,49 @@ export default function App() {
     );
   };
 
-  const handleSuggestionSelected = (prompt: string) => {
-    setExternalPrompt(prompt);
-  };
-
   const activeError = errorMessage || streamError || engineStatus?.error_message || null;
   const isReady = engineStatus?.state === "READY";
 
   return (
-    <div className="flex flex-col h-screen bg-[#07090E] font-sans text-slate-100 overflow-hidden">
-      {/* Top Navbar & Telemetry */}
-      <StatusBar
-        telemetry={telemetry}
-        engineStatus={engineStatus}
-        tokensPerSec={tokensPerSec}
-        activeProfile={activeProfile}
-        profiles={profiles}
-        onSelectProfile={setActiveProfile}
-        onOpenSettings={() => setIsSettingsOpen(true)}
+    <div className="flex h-screen bg-canvas text-fg overflow-hidden">
+      <Sidebar
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onSelectConversation={handleSelectConversation}
+        onNewConversation={handleNewConversation}
+        onRenameConversation={handleRenameConversation}
+        onDeleteConversation={handleDeleteConversation}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
 
-      {/* Main App Workspace */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Obsidian Collapsible Sidebar */}
-        <Sidebar
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          onRenameConversation={handleRenameConversation}
-          onDeleteConversation={handleDeleteConversation}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      <div className="flex-1 flex flex-col min-w-0">
+        <StatusBar
+          telemetry={telemetry}
+          engineStatus={engineStatus}
+          tokensPerSec={tokensPerSec}
+          activeProfile={activeProfile}
+          profiles={profiles}
+          onSelectProfile={setActiveProfile}
+          onOpenSettings={() => setIsSettingsOpen(true)}
         />
+        <ModelSelector engineStatus={engineStatus} onStatusChange={setEngineStatus} onError={setErrorMessage} />
+        <ErrorBanner error={activeError} onDismiss={() => setErrorMessage(null)} />
 
-        {/* Central Chat Interface Column */}
-        <main className="flex-1 flex flex-col min-w-0 max-w-5xl mx-auto p-4 gap-3 overflow-hidden">
-          {/* Model Management & Advisory Bar */}
-          <ModelSelector
-            engineStatus={engineStatus}
-            onStatusChange={setEngineStatus}
-            onError={setErrorMessage}
+        <main className="flex-1 flex flex-col min-h-0">
+          <ChatInterface
+            messages={messages}
+            isGenerating={isGenerating}
+            onRegenerate={handleRegenerate}
+            onEditMessage={handleEditMessage}
+            activeModelName={engineStatus?.model_name}
+            agentChanges={agentChanges}
+            onApproveChange={handleApproveChange}
+            onUndoChange={handleUndoChange}
           />
 
-          {/* Actionable Error Banner */}
-          <ErrorBanner
-            error={activeError}
-            onDismiss={() => setErrorMessage(null)}
-          />
-
-          {/* Central Chat Window */}
-          <div className="flex-1 flex flex-col min-h-0 bg-[#0A0D17]/60 border border-white/[0.06] rounded-2xl overflow-hidden backdrop-blur-md">
-            <ChatInterface
-              messages={messages}
-              isGenerating={isGenerating}
-              onRegenerate={handleRegenerate}
-              onEditMessage={handleEditMessage}
-              onSelectPromptSuggestion={handleSuggestionSelected}
-              activeModelName={engineStatus?.model_name}
-              agentChanges={agentChanges}
-              onApproveChange={handleApproveChange}
-              onUndoChange={handleUndoChange}
-            />
-
-            {/* Prompt Input Box */}
-            <div className="p-3 border-t border-white/[0.06] bg-[#07090E]/80 backdrop-blur-md">
+          <div className="shrink-0 px-6 pb-4 pt-2">
+            <div className="max-w-3xl mx-auto">
               <AgentBar
                 enabled={agentEnabled}
                 workspace={workspace}
@@ -390,20 +367,13 @@ export default function App() {
                 onStop={stopStream}
                 isGenerating={isGenerating}
                 disabled={!isReady && !isGenerating}
-                placeholder={
-                  isReady
-                    ? `Message ${engineStatus?.model_name || "model"}...`
-                    : "Load a model in the panel above to begin chatting..."
-                }
-                externalPrompt={externalPrompt}
-                onExternalPromptConsumed={() => setExternalPrompt(undefined)}
+                placeholder={isReady ? "Message" : "Load a model to start"}
               />
             </div>
           </div>
         </main>
       </div>
 
-      {/* Application & Generation Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
