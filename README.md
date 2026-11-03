@@ -86,3 +86,9 @@ Signing and opt-in updates are configured through environment variables; see `sc
 - Users: install with `Mustang AI_<version>_x64-setup.exe` (per user, no admin). Help: `docs\TROUBLESHOOTING.md`. Release notes and test status: `docs\milestone-4\M4_RELEASE_NOTES_0.1.0.md`, `docs\milestone-4\M4_PHASEG_RELEASE_REPORT.md`.
 - Design and status: `docs\milestone-4\`.
 
+
+## License
+
+Mustang AI is licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE) for attribution. The name and logo are not covered by the license.
+
+The Windows installer bundles third-party components under their own licenses: llama.cpp (MIT), LLVM OpenMP, the NVIDIA CUDA runtime, the Microsoft Visual C++ runtime and the Python runtime. Their notices are installed with the app.

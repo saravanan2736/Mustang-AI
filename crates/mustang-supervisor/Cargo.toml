@@ -2,6 +2,7 @@
 name = "mustang-supervisor"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 description = "Windows Job Object based child-process supervision for the Mustang AI desktop shell"
 publish = false
 

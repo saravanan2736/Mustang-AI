@@ -1,0 +1,16 @@
+Mustang AI
+Copyright 2026 Saravanan
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+"Mustang AI" and the Mustang AI logo are not licensed under the Apache License;
+see section 6 (Trademarks) of the License.
+
+The Windows installer also contains third-party components under their own
+licenses (llama.cpp under MIT, LLVM OpenMP under Apache-2.0 with LLVM
+exceptions, NVIDIA CUDA runtime libraries under the NVIDIA CUDA Toolkit EULA,
+the Microsoft Visual C++ runtime, and the Python runtime under the PSF
+License). Their notices are installed with the app (THIRD-PARTY-NOTICES.txt
+and the LICENSE files next to the bundled engine). Library dependencies of the
+source code are listed in frontend/package.json, src-tauri/Cargo.toml and
+backend/requirements.lock under their own licenses.
