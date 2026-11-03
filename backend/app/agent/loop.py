@@ -222,7 +222,8 @@ async def run_agent(
                             logger.exception(f"Applying {call.function.name} failed")
                             ok, result = False, f"Error: {call.function.name} failed; nothing was changed."
                     else:
-                        ok, result = False, "The user denied this change; nothing was written. Don't repeat it unless they ask."
+                        ok, result = False, ("The user denied this change. Nothing was written: the file was NOT created or changed. "
+                                  "Tell the user you did not make the change, and don't repeat it unless they ask.")
                 any_ok = any_ok or ok
                 yield AgentEvent("tool_result", step=step, call_id=call.id, name=call.function.name, ok=ok, text=result)
                 tool_msg = ChatMessage(role="tool", tool_call_id=call.id, content=result)

@@ -321,7 +321,8 @@ export default function App() {
       onSend={handleSendPrompt}
       onStop={stopStream}
       isGenerating={isGenerating}
-      disabled={!isReady && !isGenerating}
+      // The engine reports GENERATING until the next status poll after a reply ends; typing is still fine then.
+      disabled={!isReady && !isGenerating && engineStatus?.state !== "GENERATING"}
       placeholder={isReady || isGenerating || engineStatus?.state === "GENERATING" ? "Ask anything…" : "Load a model to start"}
       externalPrompt={externalPrompt}
       onExternalPromptConsumed={() => setExternalPrompt(undefined)}
