@@ -7,7 +7,8 @@ right tool, valid JSON arguments, sensible arguments, no tool when none is neede
 round trip per tool-using case (tool result sent back -> final answer uses it) and the prompt cost
 of the tool definitions. Nothing is executed: tool results are canned.
 
-usage: python scripts/m5/tool_call_spike.py <model.gguf> [repeats=3] [--json out.json]
+usage: python scripts/m5/tool_call_spike.py <model.gguf> [repeats=3] [--max-tokens N] [--json out.json]
+(reasoning models think before they answer or call a tool; give them a larger --max-tokens)
 """
 
 import argparse
@@ -52,9 +53,9 @@ def _has(*words):
     return lambda a: all(w in json.dumps(a).lower() for w in words)
 
 
-# (prompt, expected tool or None, argument check, canned tool result, word the final answer must contain)
+# (prompt, expected tool or None, argument check, canned tool result, word(s) the final answer must contain; "|" = any of)
 CASES = [
-    ("What time is it right now?", "get_current_time", lambda a: True, "2026-11-03 14:05:09", "14:05"),
+    ("What time is it right now?", "get_current_time", lambda a: True, "2026-11-03 14:05:09", "14:05|2:05"),
     ("What is 1234 * 5678?", "calculator", _has("1234", "5678"), "7006652", "7006652"),
     ("What is (17 + 25) / 3?", "calculator", _has("17", "25", "3"), "14", "14"),
     ("Calculate 15% of 240.", "calculator", _has("240"), "36", "36"),
@@ -81,7 +82,10 @@ class Spike:
     def __init__(self, engine: LlamaServerEngine, port: int):
         self.e, self.url = engine, f"http://127.0.0.1:{port}/v1/chat/completions"
 
-    async def ask(self, messages, stream, tools=TOOLS, max_tokens=256):
+    max_tokens = 256
+
+    async def ask(self, messages, stream, tools=TOOLS, max_tokens=None):
+        max_tokens = max_tokens or self.max_tokens
         body = {"messages": messages, "tools": tools, "temperature": 0.7, "max_tokens": max_tokens, "stream": stream}
         if not tools:
             body.pop("tools")
@@ -91,7 +95,7 @@ class Spike:
             r.raise_for_status()
             j = r.json()
             msg = j["choices"][0]["message"]
-            return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or [],
+            return {"content": msg.get("content") or "", "tool_calls": msg.get("tool_calls") or [], "reasoning": len(msg.get("reasoning_content") or ""),
                     "finish": j["choices"][0].get("finish_reason"), "usage": j.get("usage", {}), "s": time.perf_counter() - t0}
         content, calls, finish = "", {}, None
         async with self.e._http.stream("POST", self.url, json=body, headers=self.e._auth_headers(), timeout=120) as r:
@@ -135,28 +139,36 @@ def score(case, reply):
     return {"ok": True, "kind": "ok", "args": args, "leaked": leaked}
 
 
-async def round_trip(spike, case, stream):
-    """Model calls the tool, gets the canned result, and must use it in its answer."""
+async def round_trip(spike, case, stream, max_steps=3):
+    """Model calls the tool, gets the canned result, and must use it in its answer. Up to max_steps
+    tool calls are allowed (a model may check something else first); other tools get an empty result."""
     prompt, want, _, result, must = case
     msgs = [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}]
-    first = await spike.ask(msgs, stream)
-    if not first["tool_calls"] or first["tool_calls"][0]["function"]["name"] != want:
-        return {"ok": False, "kind": "no_correct_first_call"}
-    call = first["tool_calls"][0]
-    call_id = call.get("id") or "call_0"
-    msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": call_id, "type": "function", "function": call["function"]}]})
-    msgs.append({"role": "tool", "tool_call_id": call_id, "content": result})
-    second = await spike.ask(msgs, stream)
-    if second["tool_calls"]:
-        return {"ok": False, "kind": "called_again", "answer": second["content"][:160]}
-    used = must in second["content"].lower().replace(",", "")  # "7,006,652" counts as 7006652
-    return {"ok": used, "kind": "ok" if used else "ignored_result", "answer": second["content"][:160]}
+    called = []
+    for step in range(max_steps + 1):
+        reply = await spike.ask(msgs, stream)
+        if not reply["tool_calls"]:
+            break
+        if step == max_steps:
+            return {"ok": False, "kind": "too_many_steps", "calls": called}
+        call = reply["tool_calls"][0]
+        name = call["function"]["name"]
+        called.append(name)
+        call_id = call.get("id") or f"call_{step}"
+        msgs.append({"role": "assistant", "content": "", "tool_calls": [{"id": call_id, "type": "function", "function": call["function"]}]})
+        msgs.append({"role": "tool", "tool_call_id": call_id, "content": result if name == want else "(no results)"})
+    if want not in called:
+        return {"ok": False, "kind": "never_called_expected_tool", "calls": called, "answer": reply["content"][:160]}
+    text = reply["content"].lower().replace(",", "")  # "7,006,652" counts as 7006652
+    used = any(m in text for m in must.split("|"))
+    return {"ok": used, "kind": "ok" if used else "ignored_result", "calls": called, "steps": len(called), "answer": reply["content"][:160]}
 
 
 async def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("model")
     ap.add_argument("repeats", nargs="?", type=int, default=3)
+    ap.add_argument("--max-tokens", type=int, default=256)
     ap.add_argument("--json")
     a = ap.parse_args()
     model = Path(a.model)
@@ -165,6 +177,7 @@ async def main():
     assert await engine.start(EngineConfig(model_path=model, n_ctx=8192, n_gpu_layers=99, port=port)), (await engine.get_status()).error_message
     load_s = time.perf_counter() - t0
     spike = Spike(engine, port)
+    spike.max_tokens = a.max_tokens
     props = (await engine._http.get(f"http://127.0.0.1:{port}/props", headers=engine._auth_headers())).json()
     caps = props.get("chat_template_caps", {})
     out = {"model": model.name, "load_s": round(load_s, 2), "template_caps": caps, "vram_mb": (await engine.get_status()).vram_allocated_mb, "modes": {}}
@@ -189,6 +202,7 @@ async def main():
             "tool_cases_correct": f"{sum(r['ok'] for r in tool_rows)}/{len(tool_rows)}",
             "no_tool_cases_correct": f"{sum(r['ok'] for r in plain_rows)}/{len(plain_rows)}",
             "round_trips_correct": f"{sum(t['ok'] for t in trips)}/{len(trips)}",
+            "round_trip_extra_steps": sum(max(0, t.get("steps", 1) - 1) for t in trips),
             "failure_kinds": sorted({r["kind"] for r in rows if not r["ok"]}),
             "leaked_tool_syntax_in_text": sum(r["leaked"] for r in rows),
             "median_reply_s": sorted(r["s"] for r in rows)[len(rows) // 2],
@@ -200,14 +214,14 @@ async def main():
     print(f"   prompt tokens: {out['prompt_tokens']}")
     for mode, m in out["modes"].items():
         print(f"   {mode:10} tool cases {m['tool_cases_correct']:7} no-tool cases {m['no_tool_cases_correct']:6} "
-              f"round trips {m['round_trips_correct']:5} leaked {m['leaked_tool_syntax_in_text']}  median {m['median_reply_s']} s")
+              f"round trips {m['round_trips_correct']:5} (+{m['round_trip_extra_steps']} extra steps) leaked {m['leaked_tool_syntax_in_text']}  median {m['median_reply_s']} s")
         print(f"              failures: {m['failure_kinds']}")
         for r in m["rows"]:
             if not r["ok"]:
                 print(f"              x {r['prompt'][:44]:44} {r['kind']:22} got={json.dumps(r['got'])[:110]} text={r['content'][:60]!r}")
         for t in m["round_trips"]:
             if not t["ok"]:
-                print(f"              x round trip {t['prompt'][:40]:40} {t['kind']} {t.get('answer', '')[:80]!r}")
+                print(f"              x round trip {t['prompt'][:40]:40} {t['kind']} calls={t.get('calls')} {t.get('answer', '')[:70]!r}")
     if a.json:
         Path(a.json).write_text(json.dumps(out, indent=1), encoding="utf-8")
 
