@@ -89,10 +89,29 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
     }
   }, []);
 
+  // Show the indexed models at once, then scan the models folder in the background so files
+  // copied in or deleted by hand appear without pressing "Rescan". Unchanged files are cached,
+  // so repeat scans are quick.
   useEffect(() => {
-    if (isOpen) {
-      loadLibrary();
-    }
+    if (!isOpen) return;
+    let cancelled = false;
+    (async () => {
+      await loadLibrary();
+      setIsScanning(true);
+      try {
+        const res = await rescanModels();
+        if (cancelled) return;
+        setScanResult(res);
+        if (res.added || res.updated || res.pruned) await loadLibrary();
+      } catch {
+        // The Rescan button reports errors; a failed background scan keeps the list as it was.
+      } finally {
+        if (!cancelled) setIsScanning(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, loadLibrary]);
 
   const handleRescan = async () => {

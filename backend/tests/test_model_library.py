@@ -181,7 +181,8 @@ async def test_context_recommendation_safety(async_client: AsyncClient):
     """Verifies advisory context estimation categorizes tiers without 'guaranteed fit' claims."""
     await async_client.post("/api/models/scan")
     lib = (await async_client.get("/api/models/library")).json()
-    qwen = next((m for m in lib if "qwen" in m["filename"].lower()), None)
+    # The qwen2 test model by name: the models folder may hold other Qwen models (Qwen3.5 ...).
+    qwen = next((m for m in lib if m["filename"] == "qwen2.5-0.5b-instruct-q4_k_m.gguf"), None)
     assert qwen is not None
 
     rec_res = await async_client.get(f"/api/models/{qwen['id']}/context_recommendation")

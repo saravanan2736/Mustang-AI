@@ -28,7 +28,9 @@ if "MUSTANG_RUN_DIR" not in os.environ:
 _REAL_MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 if "MUSTANG_MODELS_DIR" not in os.environ:
     _test_models_dir = Path(tempfile.mkdtemp(prefix=".mustang-test-models-", dir=_REAL_MODELS_DIR.parent))
-    for _gguf in _REAL_MODELS_DIR.glob("*.gguf"):
+    # Only the small test model: the tests scan this folder, and parsing every multi-GB model the
+    # user keeps in models/ made each scan take minutes.
+    for _gguf in _REAL_MODELS_DIR.glob("qwen2.5-0.5b-instruct-q4_k_m.gguf"):
         try:
             os.link(_gguf, _test_models_dir / _gguf.name)
         except OSError:
