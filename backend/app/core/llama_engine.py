@@ -122,6 +122,7 @@ class LlamaServerEngine(InferenceEngine):
         self._http: httpx.AsyncClient | None = None
         self._active_response: httpx.Response | None = None
         self._cancel_requested = False
+        self._hung = False
 
         # Per-process API key for llama-server (passed via the LLAMA_API_KEY environment
         # variable, never argv), so other local processes cannot use the engine port.
@@ -396,6 +397,7 @@ class LlamaServerEngine(InferenceEngine):
 
     async def _health_loop(self):
         """Periodic heartbeat confirming process and HTTP endpoint are responsive."""
+        unresponsive_since: float | None = None
         while self._state in (EngineState.READY, EngineState.GENERATING):
             await asyncio.sleep(settings.ENGINE_HEALTH_INTERVAL_SECONDS)
             if not self._process or self._process.returncode is not None:
@@ -410,8 +412,37 @@ class LlamaServerEngine(InferenceEngine):
                 resp = await self._http.get(f"http://{self._config.host}:{self._config.port}/health", timeout=1.5)
                 if resp.status_code != 200:
                     logger.warning(f"Healthcheck returned non-200: {resp.status_code}")
+                unresponsive_since = None
             except Exception as e:
                 logger.warning(f"Health probe error: {e}")
+                now = time.monotonic()
+                unresponsive_since = unresponsive_since or now
+                if now - unresponsive_since >= settings.ENGINE_HUNG_SECONDS:
+                    # The process is alive but answers nothing (seen: GPU and CPU idle for 18 minutes
+                    # in the middle of a request). Waiting longer never helps: stop it and start again.
+                    logger.error("llama-server has not answered for %.0f s; restarting it", now - unresponsive_since)
+                    self._hung = True
+                    config = self._config
+                    try:
+                        self._process.kill()
+                    except ProcessLookupError:
+                        pass
+                    asyncio.create_task(self._recover_from_hang(config))
+                    break
+
+    async def _recover_from_hang(self, config: EngineConfig) -> None:
+        """Reload the model after a hang. The request that was running fails with a clear message."""
+        for _ in range(100):  # let the failed request finish first (up to 10 s)
+            if not self._gen_lock.locked():
+                break
+            await asyncio.sleep(0.1)
+        try:
+            ok = await self.start(config)
+        except Exception as e:  # noqa: BLE001
+            ok, self._error_message = False, f"The model engine stopped responding and could not be restarted: {e}"
+        if ok:
+            logger.info("llama-server restarted after a hang")
+        self._hung = False
 
     async def _stop_process_internal(self) -> bool:
         """Internal process termination helper called by lifecycle supervisor."""
@@ -588,6 +619,10 @@ class LlamaServerEngine(InferenceEngine):
                         yield ChatChunk(id="chunk", model=self._config.model_path.name, finish_reason="tool_calls", tool_calls=leftover)
             except Exception:
                 # Closing the upstream stream (cancel_generation) surfaces as a read error here.
+                if self._hung:
+                    raise RuntimeError(
+                        "The model engine stopped responding and is being restarted. Please send your message again in a moment."
+                    ) from None
                 if not self._cancel_requested:
                     raise
             finally:
