@@ -5,6 +5,7 @@ treats a long silence as a hang: it kills the process and reloads the model.
 """
 
 import asyncio
+import time
 from pathlib import Path
 
 import pytest
@@ -45,6 +46,7 @@ def _engine(http, monkeypatch):
     e._config = EngineConfig(model_path=Path("m.gguf"))
     e._process = _FakeProcess()
     e._http = http
+    e._last_activity = time.monotonic() - 1000  # nothing written for a long time
     return e
 
 
@@ -70,4 +72,21 @@ async def test_an_engine_that_answers_is_left_alone(monkeypatch):
     await asyncio.sleep(0.4)  # several times the hang limit
     e._state = EngineState.UNLOADED
     await asyncio.wait_for(task, 1)
+    assert not e._process.killed
+
+
+@pytest.mark.asyncio
+async def test_a_busy_engine_that_cannot_answer_health_is_not_killed(monkeypatch):
+    """A long prompt keeps llama-server too busy for /health, but it keeps writing output."""
+    e = _engine(_SilentHttp(), monkeypatch)
+
+    async def keep_writing():
+        for _ in range(40):
+            e._last_activity = time.monotonic()
+            await asyncio.sleep(0.01)
+        e._state = EngineState.UNLOADED
+
+    writer = asyncio.create_task(keep_writing())
+    await asyncio.wait_for(e._health_loop(), 5)
+    await writer
     assert not e._process.killed

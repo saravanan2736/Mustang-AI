@@ -46,7 +46,7 @@ def test_the_chat_never_starts_with_an_orphaned_tool_result():
 
 def test_old_tool_output_is_shortened_before_anything_is_dropped():
     msgs = _chat(6, tool_chars=6000)
-    out, dropped = fit_messages(msgs, 8192, 1024)
+    out, dropped = fit_messages(msgs, 12288, 1024)
     assert dropped == 0
     old = [m for m in out[:-4] if m["role"] == "tool"]
     assert old and all(len(m["content"]) < 1200 for m in old)

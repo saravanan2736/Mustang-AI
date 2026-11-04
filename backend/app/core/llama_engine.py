@@ -123,6 +123,7 @@ class LlamaServerEngine(InferenceEngine):
         self._active_response: httpx.Response | None = None
         self._cancel_requested = False
         self._hung = False
+        self._last_activity = time.monotonic()  # last output line or CPU use of llama-server
 
         # Per-process API key for llama-server (passed via the LLAMA_API_KEY environment
         # variable, never argv), so other local processes cannot use the engine port.
@@ -364,6 +365,7 @@ class LlamaServerEngine(InferenceEngine):
                 if not line:
                     continue
 
+                self._last_activity = time.monotonic()
                 self._stderr_buffer.append(line)
                 if len(self._stderr_buffer) > 200:
                     self._stderr_buffer.pop(0)
@@ -417,10 +419,15 @@ class LlamaServerEngine(InferenceEngine):
                 logger.warning(f"Health probe error: {e}")
                 now = time.monotonic()
                 unresponsive_since = unresponsive_since or now
-                if now - unresponsive_since >= settings.ENGINE_HUNG_SECONDS:
-                    # The process is alive but answers nothing (seen: GPU and CPU idle for 18 minutes
-                    # in the middle of a request). Waiting longer never helps: stop it and start again.
-                    logger.error("llama-server has not answered for %.0f s; restarting it", now - unresponsive_since)
+                if self._process_is_working():
+                    # Reading a long prompt keeps llama-server too busy to answer /health, but it
+                    # writes output and uses the CPU. That is slow, not hung.
+                    continue
+                idle_for = now - max(unresponsive_since, self._last_activity)
+                if idle_for >= settings.ENGINE_HUNG_SECONDS:
+                    # Alive but silent: no health answer, no output and no CPU use (seen: GPU and CPU
+                    # idle for 18 minutes in the middle of a request). Waiting longer never helps.
+                    logger.error("llama-server has been silent for %.0f s; restarting it", idle_for)
                     self._hung = True
                     config = self._config
                     try:
@@ -429,6 +436,24 @@ class LlamaServerEngine(InferenceEngine):
                         pass
                     asyncio.create_task(self._recover_from_hang(config))
                     break
+
+    def _process_is_working(self) -> bool:
+        """True if llama-server wrote output or used CPU since the last check."""
+        now = time.monotonic()
+        if now - self._last_activity < 10:
+            return True
+        try:
+            import psutil
+
+            cpu = sum(psutil.Process(self._process.pid).cpu_times()[:2])
+        except Exception:  # noqa: BLE001  (process gone or not inspectable: judge by output alone)
+            return False
+        last = getattr(self, "_last_cpu", None)
+        self._last_cpu = cpu
+        if last is not None and cpu - last > 0.5:
+            self._last_activity = now
+            return True
+        return False
 
     async def _recover_from_hang(self, config: EngineConfig) -> None:
         """Reload the model after a hang. The request that was running fails with a clear message."""

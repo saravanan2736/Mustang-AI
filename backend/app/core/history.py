@@ -16,6 +16,7 @@ logger = logging.getLogger("mustang.history")
 CHARS_PER_TOKEN = 3  # conservative: code and non-English text pack fewer characters per token
 PER_MESSAGE_TOKENS = 8
 SAFETY_TOKENS = 128
+TRIM_TO = 0.6  # once over the limit, keep this share of it
 OLD_TOOL_RESULT_CHARS = 800  # tool output from earlier turns is cut to this
 NOTE = ("Note: the earliest messages of this chat were left out to fit the context window. "
         "If something the user refers to is missing, say so and ask them to repeat it.")
@@ -62,7 +63,10 @@ def fit_messages(messages: list[dict], n_ctx: int, max_tokens: int, tools: list 
     system = [m for m in msgs if m.get("role") == "system"]
     rest = [m for m in msgs if m.get("role") != "system"]
     dropped = 0
-    while total(system + rest) > budget:
+    # Trim to well under the limit, not just under it: dropping one exchange per turn would change the
+    # start of the prompt every time, so the engine could never reuse what it already read.
+    target = int(budget * TRIM_TO)
+    while total(system + rest) > target:
         starts = [i for i, m in enumerate(rest) if m.get("role") == "user"]
         if len(starts) < 2:
             break  # only the current turn is left

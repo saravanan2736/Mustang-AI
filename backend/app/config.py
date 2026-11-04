@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     ENGINE_PORT: int = 18080
     ENGINE_STARTUP_TIMEOUT_SECONDS: int = 45
     ENGINE_HEALTH_INTERVAL_SECONDS: float = 2.0
-    ENGINE_HUNG_SECONDS: int = 60  # no health answer for this long = hung, restart
+    ENGINE_HUNG_SECONDS: int = 120  # no health answer for this long = hung, restart
     
     # Security
     ALLOWED_ORIGINS: list[str] = [
