@@ -45,7 +45,6 @@ async def test_create_shows_a_diff_and_writes_only_on_apply(ws):
 
 @pytest.mark.parametrize("path, content, msg", [
     ("notes.txt", "x", "already exists"),
-    ("missing/new.txt", "x", "doesn't exist"),
     ("run.bat", "format C:", "program and script"),
     ("evil.PS1", "x", "program and script"),
     ("link.lnk", "x", "program and script"),
@@ -195,7 +194,7 @@ async def test_approved_change_is_applied(scripted_engine, ws):
     result = next(e for e in events if e.kind == "tool_result")
     assert result.ok and result.text.startswith("Edited notes.txt")
     assert "Buy eggs." in (_root(ws) / "notes.txt").read_text(encoding="utf-8")
-    assert "create_file and edit_file show the change" in engine.requests[0].messages[0].content
+    assert "show the change to the user, who approves or denies each one" in engine.requests[0].messages[0].content
 
 
 @pytest.mark.asyncio

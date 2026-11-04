@@ -37,7 +37,7 @@ export const HeaderActions: React.FC<HeaderActionsProps> = ({
           <ChevronDown className="w-4 h-4 text-muted" />
         </button>
         {menuOpen && (
-          <div className="absolute right-0 top-full mt-1.5 w-64 rounded-2xl bg-panel/95 backdrop-blur-md border border-line/80 shadow-menu p-1.5 z-30 animate-slide-up">
+          <div className="absolute right-0 top-full mt-1.5 w-64 rounded-2xl bg-panel/95 border border-line/80 shadow-menu p-1.5 z-30">
             {profiles.map((p) => (
               <button
                 key={p.id}

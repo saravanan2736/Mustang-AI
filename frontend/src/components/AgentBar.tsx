@@ -44,7 +44,7 @@ export const AgentBar: React.FC<AgentBarProps> = ({
         }
         className={`${toolCls} ${
           enabled
-            ? "bg-accent/15 border border-accent/40 text-link shadow-glow-sm font-semibold"
+            ? "bg-accent/15 border border-accent/40 text-link font-semibold"
             : "text-muted hover:text-fg hover:bg-raised/70 border border-transparent"
         }`}
       >

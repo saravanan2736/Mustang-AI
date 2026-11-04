@@ -119,8 +119,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-2xl bg-surface/95 backdrop-blur-xl border border-line/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh] animate-slide-up">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div className="w-full max-w-2xl bg-surface/95 border border-line/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[88vh]">
         {/* Header */}
         <div className="flex items-center justify-between px-6 h-13 border-b border-line/50 bg-panel/70">
           <h2 className="text-[15px] font-semibold tracking-tight text-fg">Settings</h2>
@@ -140,7 +140,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={() => setActiveTab("inference")}
             className={`h-9 px-3 border-b-2 -mb-px transition-all font-medium ${
               activeTab === "inference"
-                ? "border-accent text-accent shadow-glow-sm"
+                ? "border-accent text-accent"
                 : "border-transparent text-muted hover:text-fg"
             }`}
           >
@@ -150,7 +150,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={() => setActiveTab("profiles")}
             className={`h-9 px-3 border-b-2 -mb-px transition-all font-medium ${
               activeTab === "profiles"
-                ? "border-accent text-accent shadow-glow-sm"
+                ? "border-accent text-accent"
                 : "border-transparent text-muted hover:text-fg"
             }`}
           >
@@ -160,7 +160,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onClick={() => setActiveTab("hardware")}
             className={`h-9 px-3 border-b-2 -mb-px transition-all font-medium ${
               activeTab === "hardware"
-                ? "border-accent text-accent shadow-glow-sm"
+                ? "border-accent text-accent"
                 : "border-transparent text-muted hover:text-fg"
             }`}
           >
@@ -171,7 +171,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               onClick={() => setActiveTab("desktop")}
               className={`h-9 px-3 border-b-2 -mb-px transition-all font-medium ${
                 activeTab === "desktop"
-                  ? "border-accent text-accent shadow-glow-sm"
+                  ? "border-accent text-accent"
                   : "border-transparent text-muted hover:text-fg"
               }`}
             >
@@ -184,7 +184,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* --- INFERENCE TAB --- */}
           {activeTab === "inference" && (
-            <div className="space-y-5 animate-fade-in">
+            <div className="space-y-5">
               {/* Temperature */}
               <div className="rounded-xl bg-panel/50 border border-line/50 p-4">
                 <div className="flex justify-between text-xs mb-2">
@@ -293,7 +293,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* --- PROFILES TAB --- */}
           {activeTab === "profiles" && (
-            <div className="space-y-4 animate-fade-in">
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted">
                   The default persona is used for new chats. Each persona is a system prompt.
@@ -312,7 +312,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {showNewProfileForm && (
                 <form
                   onSubmit={handleCreateProfile}
-                  className="p-4 rounded-xl bg-panel/80 border border-accent/70 shadow-glow-sm space-y-3 animate-slide-up"
+                  className="p-4 rounded-xl bg-panel/80 border border-accent/70 space-y-3"
                 >
                   <h4 className="text-xs font-semibold text-fg">New persona</h4>
                   <div>
@@ -357,7 +357,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                     <button
                       type="submit"
-                      className="px-3.5 py-1 text-xs btn-violet text-white font-medium rounded-lg shadow-glow-sm hover:brightness-110"
+                      className="px-3.5 py-1 text-xs btn-violet text-white font-medium rounded-lg hover:brightness-110"
                     >
                       Create
                     </button>
@@ -375,7 +375,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={() => setSettings({ ...settings, default_profile: p.id })}
                       className={`p-3.5 rounded-xl border text-xs cursor-pointer transition-all flex items-start justify-between ${
                         isSelected
-                          ? "bg-accent/15 border-accent/70 shadow-glow-sm"
+                          ? "bg-accent/15 border-accent/70"
                           : "bg-panel/50 border-line/60 hover:border-line hover:bg-panel/80"
                       }`}
                     >
@@ -423,7 +423,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* --- HARDWARE TAB --- */}
           {activeTab === "hardware" && (
-            <div className="space-y-5 animate-fade-in">
+            <div className="space-y-5">
               <div className="rounded-xl bg-panel/50 border border-line/50 p-4">
                 <label className="text-xs font-medium text-fg block mb-2">Default context size</label>
                 <div className="grid grid-cols-4 gap-2">
@@ -434,7 +434,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onClick={() => setSettings({ ...settings, context_size: ctx })}
                       className={`h-9 px-3 rounded-xl text-xs font-mono font-medium border transition-all ${
                         settings.context_size === ctx
-                          ? "bg-accent/20 text-fg border-accent/80 shadow-glow-sm"
+                          ? "bg-accent/20 text-fg border-accent/80"
                           : "bg-panel/70 border-line/60 text-muted hover:text-fg hover:border-line"
                       }`}
                     >
@@ -463,12 +463,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
             <div className="flex items-center gap-3">
               {saveSuccess && (
-                <span className="text-xs font-medium text-emerald-400">Saved</span>
+                <span className="text-xs font-medium text-success">Saved</span>
               )}
               <button
                 onClick={handleSave}
                 disabled={isSaving}
-                className="h-8 px-4 rounded-xl btn-violet text-white font-medium text-[13px] shadow-glow-sm hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
+                className="h-8 px-4 rounded-xl btn-violet text-white font-medium text-[13px] hover:brightness-110 transition-all disabled:opacity-50"
               >
                 {isSaving ? "Saving…" : "Save"}
               </button>

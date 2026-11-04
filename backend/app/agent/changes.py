@@ -13,7 +13,7 @@ import json
 import os
 import threading
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from app.agent.workspace import BACKUP_DIR_NAME, Workspace
@@ -36,6 +36,7 @@ class Change:
     new_sha256: str
     time: float
     undone: bool = False
+    created_dirs: list[str] = field(default_factory=list)  # folders this change made (relative, top first)
 
 
 def sha256_bytes(data: bytes) -> str:
@@ -95,14 +96,24 @@ def atomic_write(path: Path, data: bytes) -> None:
 
 
 def apply_change(ws: Workspace, target: Path, data: bytes, *, kind: str, call_id: str,
-                 conversation_id: str | None, expected_sha256: str | None) -> Change:
+                 conversation_id: str | None, expected_sha256: str | None,
+                 make_dirs: list[Path] | None = None) -> Change:
     """Write `data` to `target` after the user approved it. `expected_sha256` is the file as it
     was when the change was shown (None = it must not exist): if it changed since, nothing is
-    written."""
+    written. `make_dirs` are folders (top first, all inside the workspace) to create first; the
+    journal remembers the ones that were new so Undo can remove them again."""
     with _lock:
         current = sha256_file(target)
         if current != expected_sha256:
             raise ChangeError("The file changed after the change was shown; nothing was written. Ask again.")
+        created: list[str] = []
+        for d in make_dirs or []:
+            if d.exists():
+                if not d.is_dir():
+                    raise ChangeError(f"{ws.relative(d)!r} is a file, not a folder; nothing was written.")
+                continue
+            d.mkdir()
+            created.append(ws.relative(d))
         backup_name = None
         if kind == "edit":
             stamp = time.strftime("%Y%m%d-%H%M%S")
@@ -110,7 +121,7 @@ def apply_change(ws: Workspace, target: Path, data: bytes, *, kind: str, call_id
             (_backup_dir(ws) / backup_name).write_bytes(target.read_bytes())
         atomic_write(target, data)
         entry = Change(call_id=call_id, conversation_id=conversation_id, path=ws.relative(target), kind=kind,
-                       backup=backup_name, new_sha256=sha256_bytes(data), time=time.time())
+                       backup=backup_name, new_sha256=sha256_bytes(data), time=time.time(), created_dirs=created)
         entries = _read_journal(ws)
         entries.append(entry)
         _write_journal(ws, entries)
@@ -147,6 +158,12 @@ def undo_change(ws: Workspace, call_id: str, conversation_id: str | None = None)
             atomic_write(target, backup.read_bytes())
         else:
             target.unlink()
+        # Folders the change created go too, deepest first, but only while they are empty.
+        for rel in reversed(entry.created_dirs):
+            try:
+                (ws.root / rel).rmdir()
+            except OSError:
+                break  # not empty (the user added something) or already gone: leave the rest
         entry.undone = True
         _write_journal(ws, entries)
         return entry

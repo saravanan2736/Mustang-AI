@@ -33,7 +33,7 @@ const iconButton =
 const gb = (mb: number) => (mb / 1024).toFixed(1);
 
 const Logo = () => (
-  <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-700 text-white flex items-center justify-center shrink-0 shadow-glow-sm" aria-hidden>
+  <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-accent to-purple-700 text-white flex items-center justify-center shrink-0" aria-hidden>
     <Zap className="w-4 h-4 fill-current" />
   </span>
 );
@@ -137,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </button>
       </div>
       {searchOpen && (
-        <div className="px-3 pt-1.5 animate-fade-in">
+        <div className="px-3 pt-1.5">
           <input
             type="text"
             autoFocus
@@ -162,7 +162,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <form
                       key={conv.id}
                       onSubmit={(e) => saveRename(conv.id, e)}
-                      className="flex items-center gap-1 h-8 px-2 rounded-lg border border-accent/80 bg-panel/90 shadow-glow-sm"
+                      className="flex items-center gap-1 h-8 px-2 rounded-lg border border-accent/80 bg-panel/90"
                     >
                       <input
                         type="text"
@@ -228,7 +228,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="p-3 border-t border-line/30">
-        <div className="rounded-xl bg-panel/70 border border-line/60 p-3 shadow-sm backdrop-blur-sm">
+        <div className="rounded-xl bg-panel/70 border border-line/60 p-3 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
             <span className="w-7 h-7 flex items-center justify-center rounded-lg bg-raised/80 border border-line/60 text-accent">
               <Cpu className="w-4 h-4" />
@@ -236,7 +236,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="min-w-0 flex-1">
               <div className="text-[13px] font-medium text-fg flex items-center justify-between">
                 <span>This PC</span>
-                <span className={`w-1.5 h-1.5 rounded-full ${loaded ? "bg-emerald-400 shadow-[0_0_6px_#34d399]" : "bg-subtle"}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${loaded ? "bg-success shadow-[0_0_6px_#34d399]" : "bg-subtle"}`} />
               </div>
               <div className="text-[11px] text-subtle truncate" title={engineStatus?.model_name ?? undefined}>
                 {loaded ? engineStatus?.model_name?.replace(/\.gguf$/i, "") : "No model loaded"}

@@ -225,15 +225,15 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
         (task.sha256_expected && task.sha256_actual === task.sha256_expected)
       ) {
         return (
-          <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
-            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+          <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-success/10 text-success border border-success/25">
+            <ShieldCheck className="w-3 h-3 text-success" />
             <span>SHA-256 Verified</span>
           </span>
         );
       } else {
         return (
-          <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
-            <AlertTriangle className="w-3 h-3 text-amber-400" />
+          <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-warning/10 text-warning border border-warning/20">
+            <AlertTriangle className="w-3 h-3 text-warning" />
             <span>Size Verified (No Upstream Checksum)</span>
           </span>
         );
@@ -245,8 +245,8 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
         task.error_message?.includes("SHA-256")
       ) {
         return (
-          <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">
-            <AlertTriangle className="w-3 h-3 text-rose-400" />
+          <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-danger/15 text-danger border border-danger/30">
+            <AlertTriangle className="w-3 h-3 text-danger" />
             <span>Checksum Mismatch</span>
           </span>
         );
@@ -256,8 +256,8 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
         task.error_message?.toLowerCase().includes("size mismatch")
       ) {
         return (
-          <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">
-            <AlertTriangle className="w-3 h-3 text-rose-400" />
+          <span className="flex items-center gap-1 text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-danger/15 text-danger border border-danger/30">
+            <AlertTriangle className="w-3 h-3 text-danger" />
             <span>Size Mismatch</span>
           </span>
         );
@@ -270,7 +270,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
     switch (status) {
       case "QUEUED":
         return (
-          <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+          <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-warning/10 text-warning border border-warning/20">
             <Clock className="w-3 h-3" /> Queued
           </span>
         );
@@ -294,13 +294,13 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
         );
       case "COMPLETED":
         return (
-          <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+          <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-success/10 text-success border border-success/25">
             <CheckCircle2 className="w-3 h-3" /> Completed
           </span>
         );
       case "FAILED":
         return (
-          <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">
+          <span className="flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-danger/15 text-danger border border-danger/30">
             <AlertTriangle className="w-3 h-3" /> Failed
           </span>
         );
@@ -319,12 +319,12 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
     <div className="flex flex-col h-full overflow-hidden bg-transparent text-fg">
       {/* Top Banner / Error */}
       {errorMessage && (
-        <div className="px-6 py-2.5 bg-rose-950/30 border-b border-rose-500/40 flex items-center gap-2 text-xs text-rose-300">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+        <div className="px-6 py-2.5 bg-danger/10 border-b border-danger/40 flex items-center gap-2 text-xs text-danger">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-danger" />
           <span className="flex-1">{errorMessage}</span>
           <button
             onClick={() => setErrorMessage(null)}
-            className="text-rose-400 hover:text-rose-200 text-xs font-semibold"
+            className="text-danger hover:opacity-80 text-xs font-semibold"
           >
             Dismiss
           </button>
@@ -363,11 +363,11 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
                 key={task.id}
                 className={`p-4 rounded-2xl border transition-all shadow-sm ${
                   task.status === "DOWNLOADING"
-                    ? "bg-panel/80 border-accent/80 shadow-glow-sm"
+                    ? "bg-panel/80 border-accent/80"
                     : task.status === "COMPLETED"
-                      ? "bg-panel/60 border-emerald-500/40"
+                      ? "bg-panel/60 border-success/40"
                       : task.status === "FAILED"
-                        ? "bg-rose-950/20 border-rose-500/40"
+                        ? "bg-danger/10 border-danger/40"
                         : "bg-panel/50 border-line/60"
                 }`}
               >
@@ -404,7 +404,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
                         <button
                           onClick={() => handlePause(task.id)}
                           disabled={isBusy}
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-all disabled:opacity-50"
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-warning/10 hover:bg-warning/20 text-warning border border-warning/30 transition-all disabled:opacity-50"
                           title="Pause download"
                         >
                           <Pause className="w-3.5 h-3.5" />
@@ -416,7 +416,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
                         <button
                           onClick={() => handleResume(task.id)}
                           disabled={isBusy}
-                          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium btn-violet text-white shadow-glow-sm hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
+                          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-medium btn-violet text-white hover:brightness-110 transition-all disabled:opacity-50"
                           title="Resume download"
                         >
                           <Play className="w-3.5 h-3.5 fill-current" />
@@ -430,7 +430,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
                           <button
                             onClick={() => handleCancelClick(task)}
                             disabled={isBusy}
-                            className="p-2 rounded-xl text-subtle hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 transition-all disabled:opacity-50"
+                            className="p-2 rounded-xl text-subtle hover:text-danger hover:bg-danger/10 border border-transparent hover:border-danger/30 transition-all disabled:opacity-50"
                             title="Cancel download"
                           >
                             <X className="w-4 h-4" />
@@ -455,8 +455,8 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
                           disabled={isLoadedInEngine}
                           className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all ${
                             isLoadedInEngine
-                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 cursor-default"
-                              : "btn-violet text-white shadow-glow-sm hover:brightness-110 active:scale-95"
+                              ? "bg-success/10 text-success border border-success/30 cursor-default"
+                              : "btn-violet text-white hover:brightness-110"
                           }`}
                         >
                           <Play className="w-3.5 h-3.5 fill-current" />
@@ -478,7 +478,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
                               task.status === "VERIFYING"
                                 ? "bg-gradient-to-r from-accent to-purple-400"
                                 : task.status === "PAUSED"
-                                  ? "bg-amber-500"
+                                  ? "bg-warning"
                                   : "bg-gradient-to-r from-accent to-purple-600"
                             }`}
                             style={{ width: `${pct}%` }}
@@ -493,7 +493,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
                                 Speed: <strong>{formatSpeed(task.speed_bps)}</strong>
                               </span>
                             )}
-                            {task.status === "PAUSED" && <span className="text-amber-400">Download paused</span>}
+                            {task.status === "PAUSED" && <span className="text-warning">Download paused</span>}
                             {task.status === "QUEUED" && <span>Waiting for active slot...</span>}
                             {task.status === "VERIFYING" && (
                               <span className="text-accent">Verifying integrity...</span>
@@ -513,8 +513,8 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
 
                   {/* Terminal Error Message */}
                   {task.status === "FAILED" && task.error_message && (
-                    <div className="p-3 rounded-xl bg-rose-950/20 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2.5">
-                      <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
+                    <div className="p-3 rounded-xl bg-danger/10 border border-danger/40 text-xs text-danger flex items-start gap-2.5">
+                      <AlertTriangle className="w-4 h-4 shrink-0 text-danger mt-0.5" />
                       <span className="break-all leading-relaxed">{task.error_message}</span>
                     </div>
                   )}
@@ -541,10 +541,10 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
 
       {/* Cancel Confirmation Modal */}
       {taskToCancel && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-panel/95 backdrop-blur-xl border border-rose-500/40 rounded-2xl p-6 shadow-2xl space-y-4 animate-slide-up">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70">
+          <div className="w-full max-w-md bg-panel/95 border border-danger/40 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
+              <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger">
                 <ShieldAlert className="w-6 h-6" />
               </div>
               <div>
@@ -559,7 +559,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
 
             <div className="bg-canvas/90 border border-line/60 rounded-xl p-3.5 text-xs space-y-1.5 font-mono text-fg">
               <div className="text-subtle text-[11px]">Filename:</div>
-              <div className="text-rose-400 font-semibold truncate">{taskToCancel.filename}</div>
+              <div className="text-danger font-semibold truncate">{taskToCancel.filename}</div>
               <div className="text-subtle text-[11px] pt-1">Downloaded so far:</div>
               <div>
                 {formatBytes(taskToCancel.downloaded_bytes)} of {taskToCancel.total_bytes > 0 ? formatBytes(taskToCancel.total_bytes) : "unknown size"}
@@ -575,7 +575,7 @@ export const DownloadQueue: React.FC<DownloadQueueProps> = ({
               </button>
               <button
                 onClick={() => handleConfirmCancel(taskToCancel.id)}
-                className="px-4 py-2 rounded-xl text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow-glow-sm transition-all"
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-danger hover:opacity-90 text-white font-semibold transition-all"
               >
                 Abort & Discard File
               </button>

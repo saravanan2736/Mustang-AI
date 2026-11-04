@@ -209,7 +209,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
           <button
             type="submit"
             disabled={isSearching}
-            className="px-4 py-1.5 rounded-xl text-xs font-semibold btn-violet text-white shadow-glow-sm hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+            className="px-4 py-1.5 rounded-xl text-xs font-semibold btn-violet text-white hover:brightness-110 transition-all disabled:opacity-50 flex items-center gap-1.5 shrink-0"
           >
             {isSearching ? (
               <RefreshCw className="w-3.5 h-3.5 animate-spin" />
@@ -236,15 +236,15 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
       {/* Error Banner */}
       {(searchError || repoError) && (
-        <div className="px-6 py-2.5 bg-rose-950/30 border-b border-rose-500/40 flex items-center gap-2 text-xs text-rose-300">
-          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
+        <div className="px-6 py-2.5 bg-danger/10 border-b border-danger/40 flex items-center gap-2 text-xs text-danger">
+          <AlertTriangle className="w-4 h-4 shrink-0 text-danger" />
           <span className="flex-1">{searchError || repoError}</span>
           <button
             onClick={() => {
               setSearchError(null);
               setRepoError(null);
             }}
-            className="text-rose-400 hover:text-rose-200 text-xs font-semibold"
+            className="text-danger hover:opacity-80 text-xs font-semibold"
           >
             Dismiss
           </button>
@@ -400,7 +400,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                             onClick={() => setSelectedFile(file)}
                             className={`p-3.5 rounded-xl border cursor-pointer transition-all flex items-center justify-between gap-3 ${
                               isSelected
-                                ? "bg-accent/15 border-accent/80 shadow-glow-sm"
+                                ? "bg-accent/15 border-accent/80"
                                 : "bg-panel/50 border-line/60 hover:border-line hover:bg-panel/80"
                             }`}
                           >
@@ -408,7 +408,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                               <div
                                 className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-colors ${
                                   isSelected
-                                    ? "border-accent bg-accent shadow-glow-sm"
+                                    ? "border-accent bg-accent"
                                     : "border-line/70 bg-transparent"
                                 }`}
                               >
@@ -453,7 +453,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
                 {/* Sticky Selection & Prepare Download Bar */}
                 {selectedFile && (
-                  <div className="sticky bottom-0 bg-panel/95 backdrop-blur-xl border border-accent/60 rounded-2xl p-4 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3 animate-slide-up">
+                  <div className="sticky bottom-0 bg-panel/95 border border-accent/60 rounded-2xl p-4 shadow-2xl flex flex-col sm:flex-row items-center justify-between gap-3">
                     <div className="space-y-0.5 w-full sm:w-auto">
                       <div className="text-xs text-muted">Selected Quantization File:</div>
                       <div className="text-xs font-medium text-fg flex items-center gap-2">
@@ -466,7 +466,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
                     <button
                       onClick={handlePrepareDownload}
-                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold btn-violet text-white shadow-glow-sm hover:brightness-110 active:scale-95 transition-all shrink-0"
+                      className="w-full sm:w-auto flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-xs font-semibold btn-violet text-white hover:brightness-110 transition-all shrink-0"
                     >
                       <Download className="w-4 h-4" />
                       <span>Prepare Download</span>
@@ -505,7 +505,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                   <div
                     key={repo.repo_id}
                     onClick={() => handleOpenRepo(repo.repo_id)}
-                    className="p-4 rounded-2xl border border-line/60 bg-panel/60 hover:border-accent/60 hover:bg-panel/85 backdrop-blur-sm transition-all cursor-pointer flex flex-col justify-between gap-3 group shadow-sm hover:shadow-glow-sm"
+                    className="p-4 rounded-2xl border border-line/60 bg-panel/60 hover:border-accent/60 hover:bg-panel/85 transition-all cursor-pointer flex flex-col justify-between gap-3 group shadow-sm"
                   >
                     <div className="space-y-2">
                       <div className="flex items-start justify-between gap-2">
@@ -536,7 +536,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
                           {formatDownloads(repo.downloads)}
                         </span>
                         <span className="flex items-center gap-1 font-mono">
-                          <Heart className="w-3.5 h-3.5 text-rose-400" />
+                          <Heart className="w-3.5 h-3.5 text-danger" />
                           {repo.likes}
                         </span>
                       </div>
@@ -555,10 +555,10 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
 
       {/* Prepare Download Preview Modal (Stage 3 Verification Modal) */}
       {showPreparedModal && preparedDownload && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-panel/95 backdrop-blur-xl border border-accent/60 rounded-2xl p-6 shadow-2xl space-y-4 animate-slide-up">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70">
+          <div className="w-full max-w-lg bg-panel/95 border border-accent/60 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-accent/15 border border-accent/30 text-accent shadow-glow-sm">
+              <div className="p-3 rounded-xl bg-accent/15 border border-accent/30 text-accent">
                 <FileCheck className="w-6 h-6" />
               </div>
               <div>
@@ -583,7 +583,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
               <div className="flex justify-between">
                 <div>
                   <span className="text-subtle">Quantization:</span>{" "}
-                  <span className="text-emerald-400 font-semibold">{preparedDownload.quantization}</span>
+                  <span className="text-success font-semibold">{preparedDownload.quantization}</span>
                 </div>
                 <div>
                   <span className="text-subtle">Size:</span>{" "}
@@ -619,7 +619,7 @@ export const HuggingFaceDiscovery: React.FC<HuggingFaceDiscoveryProps> = ({
               <button
                 onClick={handleStartDownload}
                 disabled={isEnqueueing}
-                className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-semibold btn-violet text-white shadow-glow-sm hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
+                className="flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-semibold btn-violet text-white hover:brightness-110 transition-all disabled:opacity-50"
               >
                 {isEnqueueing ? (
                   <RefreshCw className="w-3.5 h-3.5 animate-spin" />

@@ -1,12 +1,13 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { Copy, Check, RotateCcw, Pencil } from "lucide-react";
+import { ArrowDown, Check, Copy, Pencil, RotateCcw } from "lucide-react";
 import { AgentChange, ChatMessage } from "../types";
 import { CodeBlock } from "./CodeBlock";
 import { ToolSteps } from "./ToolSteps";
+import { stripEmoji } from "../services/text";
 
 interface ChatInterfaceProps {
   messages: ChatMessage[];
@@ -19,8 +20,11 @@ interface ChatInterfaceProps {
   onUndoChange?: (callId: string) => void;
 }
 
+/** How close to the bottom (px) still counts as "following" the reply. */
+const FOLLOW_THRESHOLD = 80;
+
 const actionCls =
-  "h-7 px-2 flex items-center gap-1 rounded-lg text-xs text-subtle hover:text-fg hover:bg-raised/80 hover:border-line/60 border border-transparent transition-all";
+  "h-7 px-2 flex items-center gap-1 rounded-md text-xs text-subtle hover:text-fg hover:bg-raised transition-colors";
 
 const markdownComponents = {
   code({ className, children, ...props }: React.ComponentProps<"code">) {
@@ -28,7 +32,7 @@ const markdownComponents = {
     const isInline = !match && !String(children).includes("\n");
     if (isInline) {
       return (
-        <code className="px-1.5 py-0.5 rounded-md bg-raised/80 border border-line/50 font-mono text-[0.85em] text-link" {...props}>
+        <code className="px-1.5 py-0.5 rounded bg-raised font-mono text-[0.85em]" {...props}>
           {children}
         </code>
       );
@@ -37,157 +41,238 @@ const markdownComponents = {
   },
 };
 
-export const ChatInterface: React.FC<ChatInterfaceProps> = ({
-  messages,
-  isGenerating,
-  onRegenerate,
-  onEditMessage,
-  activeModelName,
-  agentChanges,
-  onApproveChange,
-  onUndoChange,
-}) => {
-  const scrollEndRef = useRef<HTMLDivElement>(null);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [editingMsgId, setEditingMsgId] = useState<string | null>(null);
-  const [editContent, setEditContent] = useState<string>("");
-
-  useEffect(() => {
-    scrollEndRef.current?.scrollIntoView({ block: "end" });
-  }, [messages, isGenerating]);
-
-  const copyToClipboard = (text: string, id: string) => {
+function useCopy() {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback((text: string) => {
     navigator.clipboard.writeText(text);
-    setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }, []);
+  return { copied, copy };
+}
 
-  if (messages.length === 0) {
+interface UserMessageProps {
+  msg: ChatMessage;
+  canEdit: boolean;
+  onEdit: (id: string, text: string) => void;
+}
+
+const UserMessage = memo(function UserMessage({ msg, canEdit, onEdit }: UserMessageProps) {
+  const { copied, copy } = useCopy();
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(msg.content);
+
+  if (editing) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="text-center">
-          <p className="text-[15px] text-fg">No messages yet</p>
-          <p className="mt-1 text-[13px] text-muted">
-            {activeModelName ? "Type a message below to start." : "Load a model above, then type a message below."}
-          </p>
+      <div className="flex flex-col items-end">
+        <div className="w-full max-w-[85%] space-y-2">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            rows={3}
+            autoFocus
+            className="w-full bg-panel border border-accent rounded-xl p-3 text-[14px] text-fg focus:outline-none"
+          />
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setEditing(false)} className="h-7 px-3 rounded-md text-xs text-muted hover:text-fg hover:bg-raised">
+              Cancel
+            </button>
+            <button
+              onClick={() => {
+                if (text.trim()) onEdit(msg.id, text.trim());
+                setEditing(false);
+              }}
+              className="h-7 px-3 rounded-md text-xs font-medium bg-accent text-white hover:bg-accent-hover transition-colors"
+            >
+              Save and send
+            </button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-6 py-6 space-y-6">
-        {messages.map((msg, index) => {
-          const isUser = msg.role === "user";
-          const isLast = index === messages.length - 1;
-          const isStreaming = isGenerating && isLast && !isUser;
-          const toolRunning = msg.steps?.some((s) => s.status === "running" || s.status === "awaiting");
-
-          if (isUser) {
-            const editing = editingMsgId === msg.id;
-            return (
-              <div key={msg.id} className="group flex flex-col items-end animate-fade-in">
-                {editing ? (
-                  <div className="w-full max-w-[85%] space-y-2">
-                    <textarea
-                      value={editContent}
-                      onChange={(e) => setEditContent(e.target.value)}
-                      rows={3}
-                      autoFocus
-                      className="w-full bg-panel/95 border border-accent/80 rounded-xl p-3 text-[14px] text-fg focus:outline-none shadow-glow-sm"
-                    />
-                    <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => setEditingMsgId(null)}
-                        className="h-7 px-3 rounded-lg text-xs font-medium text-muted hover:text-fg hover:bg-raised"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={() => {
-                          if (editContent.trim() && onEditMessage) onEditMessage(msg.id, editContent.trim());
-                          setEditingMsgId(null);
-                        }}
-                        className="h-7 px-3 rounded-lg text-xs font-medium btn-violet text-white shadow-glow-sm hover:brightness-110"
-                      >
-                        Save and send
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="max-w-[85%] rounded-2xl bg-panel/80 border border-line/70 px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap break-words shadow-sm text-fg">
-                      {msg.content}
-                    </div>
-                    <div className="h-7 mt-0.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button onClick={() => copyToClipboard(msg.content, msg.id)} className={actionCls} title="Copy">
-                        {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                      </button>
-                      {!isGenerating && onEditMessage && (
-                        <button
-                          onClick={() => {
-                            setEditingMsgId(msg.id);
-                            setEditContent(msg.content);
-                          }}
-                          className={actionCls}
-                          title="Edit and send again"
-                        >
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-            );
-          }
-
-          return (
-            <div key={msg.id} className="group animate-fade-in">
-              {msg.steps?.length ? (
-                <ToolSteps
-                  steps={msg.steps}
-                  stopReason={msg.agent_stop_reason}
-                  changes={agentChanges}
-                  onApprove={onApproveChange}
-                  onUndo={onUndoChange}
-                />
-              ) : null}
-              <div className="markdown-content text-[14px] text-fg break-words">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkMath]}
-                  rehypePlugins={[rehypeKatex]}
-                  components={markdownComponents}
-                >
-                  {msg.content}
-                </ReactMarkdown>
-                {isStreaming && !toolRunning && (
-                  <span className="inline-block w-1.5 h-4 bg-accent align-text-bottom animate-pulse shadow-glow-sm ml-0.5 rounded-sm" aria-hidden />
-                )}
-              </div>
-              {!isStreaming && msg.content && (
-                <div className="h-7 mt-1.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => copyToClipboard(msg.content, msg.id)} className={actionCls} title="Copy">
-                    {copiedId === msg.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                  {isLast && onRegenerate && (
-                    <button onClick={onRegenerate} className={actionCls} title="Regenerate">
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  {msg.token_count ? (
-                    <span className="ml-1 text-[11px] font-mono text-subtle px-1.5 py-0.5 rounded bg-raised/50 border border-line/40">
-                      {msg.token_count} tokens
-                    </span>
-                  ) : null}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        <div ref={scrollEndRef} />
+    <div className="group flex flex-col items-end">
+      <div className="max-w-[85%] rounded-2xl bg-raised px-4 py-2.5 text-[14px] leading-relaxed whitespace-pre-wrap break-words text-fg">
+        {msg.content}
       </div>
+      <div className="h-7 mt-0.5 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <button onClick={() => copy(msg.content)} className={actionCls} title="Copy">
+          {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+        </button>
+        {canEdit && (
+          <button
+            onClick={() => {
+              setText(msg.content);
+              setEditing(true);
+            }}
+            className={actionCls}
+            title="Edit and send again"
+          >
+            <Pencil className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+});
+
+interface AssistantMessageProps {
+  msg: ChatMessage;
+  streaming: boolean;
+  isLast: boolean;
+  changes?: Record<string, AgentChange>;
+  onApprove: (callId: string, approved: boolean) => void;
+  onUndo: (callId: string) => void;
+  onRegenerate: () => void;
+}
+
+const AssistantMessage = memo(function AssistantMessage({
+  msg,
+  streaming,
+  isLast,
+  changes,
+  onApprove,
+  onUndo,
+  onRegenerate,
+}: AssistantMessageProps) {
+  const { copied, copy } = useCopy();
+  const toolRunning = msg.steps?.some((s) => s.status === "running" || s.status === "awaiting");
+  const text = stripEmoji(msg.content);
+
+  return (
+    <div className="group">
+      {msg.steps?.length ? (
+        <ToolSteps steps={msg.steps} stopReason={msg.agent_stop_reason} changes={changes} onApprove={onApprove} onUndo={onUndo} />
+      ) : null}
+      <div className="markdown-content text-[14px] text-fg break-words">
+        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>
+          {text}
+        </ReactMarkdown>
+        {streaming && !toolRunning && (
+          <span className="inline-block w-1.5 h-4 bg-muted align-text-bottom animate-pulse rounded-sm" aria-hidden />
+        )}
+      </div>
+      {!streaming && msg.content && (
+        <div className="h-7 mt-1 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button onClick={() => copy(text)} className={actionCls} title="Copy">
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+          </button>
+          {isLast && (
+            <button onClick={onRegenerate} className={actionCls} title="Regenerate">
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {msg.token_count ? <span className="ml-1 text-xs text-subtle tabular-nums">{msg.token_count} tokens</span> : null}
+        </div>
+      )}
+    </div>
+  );
+});
+
+export const ChatInterface: React.FC<ChatInterfaceProps> = ({
+  messages,
+  isGenerating,
+  onRegenerate,
+  onEditMessage,
+  agentChanges,
+  onApproveChange,
+  onUndoChange,
+}) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const following = useRef(true); // true while the reader is at the bottom
+  const [showLatest, setShowLatest] = useState(false);
+
+  // Callbacks stay the same function between renders, so memoised messages don't re-render per token.
+  const handlers = useRef({ onRegenerate, onEditMessage, onApproveChange, onUndoChange });
+  handlers.current = { onRegenerate, onEditMessage, onApproveChange, onUndoChange };
+  const regenerate = useCallback(() => handlers.current.onRegenerate?.(), []);
+  const edit = useCallback((id: string, text: string) => handlers.current.onEditMessage?.(id, text), []);
+  const approve = useCallback((id: string, ok: boolean) => handlers.current.onApproveChange?.(id, ok), []);
+  const undo = useCallback((id: string) => handlers.current.onUndoChange?.(id), []);
+
+  // Scroll only this container (scrollIntoView also moves the clipped panels around it).
+  const scrollToBottom = useCallback((smooth = false) => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  }, []);
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD;
+    following.current = atBottom;
+    setShowLatest(!atBottom);
+  };
+
+  // A different conversation opens at its end.
+  const firstId = messages[0]?.id;
+  useLayoutEffect(() => {
+    following.current = true;
+    setShowLatest(false);
+    scrollToBottom();
+  }, [firstId, scrollToBottom]);
+
+  // Sending a message always brings you to it.
+  const last = messages[messages.length - 1];
+  const lastIsNewUserMessage = last?.role === "user";
+  useLayoutEffect(() => {
+    if (lastIsNewUserMessage) {
+      following.current = true;
+      setShowLatest(false);
+      scrollToBottom();
+    }
+  }, [messages.length, lastIsNewUserMessage, scrollToBottom]);
+
+  // While the reply grows (text, tool cards, code blocks), stay at the bottom, but only if the
+  // reader hasn't scrolled up.
+  useEffect(() => {
+    const content = contentRef.current;
+    if (!content || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      if (following.current) scrollToBottom();
+    });
+    ro.observe(content);
+    return () => ro.disconnect();
+  }, [scrollToBottom]);
+
+  return (
+    <div className="relative flex-1 min-h-0 flex flex-col">
+      <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto overscroll-contain" style={{ overflowAnchor: "none" }}>
+        <div ref={contentRef} className="max-w-3xl mx-auto px-6 py-6 space-y-6">
+          {messages.map((msg, index) => {
+            const isLast = index === messages.length - 1;
+            return msg.role === "user" ? (
+              <UserMessage key={msg.id} msg={msg} canEdit={!isGenerating} onEdit={edit} />
+            ) : (
+              <AssistantMessage
+                key={msg.id}
+                msg={msg}
+                streaming={isGenerating && isLast}
+                isLast={isLast}
+                changes={agentChanges}
+                onApprove={approve}
+                onUndo={undo}
+                onRegenerate={regenerate}
+              />
+            );
+          })}
+        </div>
+      </div>
+      {showLatest && (
+        <button
+          onClick={() => {
+            following.current = true;
+            scrollToBottom(true);
+          }}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 h-8 px-3 flex items-center gap-1.5 rounded-full bg-panel border border-line text-xs text-fg hover:bg-raised transition-colors"
+        >
+          <ArrowDown className="w-3.5 h-3.5" />
+          Latest
+        </button>
+      )}
     </div>
   );
 };

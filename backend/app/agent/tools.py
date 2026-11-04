@@ -321,6 +321,7 @@ EXECUTABLE_SUFFIXES = {
     ".msi", ".msp", ".scr", ".pif", ".lnk", ".url", ".hta", ".cpl", ".dll", ".sys", ".reg", ".jar", ".appref-ms",
 }
 MAX_WRITE_CHARS = 200_000
+MAX_NEW_FOLDERS = 6
 MAX_EDIT_FILE_BYTES = 1024 * 1024
 MAX_DIFF_CHARS = 20_000
 _UTF8_BOM = b"\xef\xbb\xbf"
@@ -355,8 +356,17 @@ def _prepare_create(path: str, content: str, ctx: ToolContext):
         raise ToolError(str(e))
     if target.exists():
         raise ToolError(f"{path!r} already exists. Use edit_file to change it.")
-    if not target.parent.is_dir():
-        raise ToolError(f"The folder for {path!r} doesn't exist; files can only be created in existing folders.")
+    # Missing folders on the way are created together with the file (the approval shows them).
+    new_dirs: list[Path] = []
+    probe = target.parent
+    while not probe.exists() and probe != ws.root:
+        new_dirs.append(probe)
+        probe = probe.parent
+    if not probe.is_dir():
+        raise ToolError(f"{ws.relative(probe)!r} is a file, so {path!r} can't be created inside it.")
+    if len(new_dirs) > MAX_NEW_FOLDERS:
+        raise ToolError(f"{path!r} would create {len(new_dirs)} new folders (the limit is {MAX_NEW_FOLDERS}).")
+    new_dirs.reverse()
     _check_writable_name(target, path)
     if len(content) > MAX_WRITE_CHARS:
         raise ToolError(f"Content is too long (max {MAX_WRITE_CHARS} characters).")
@@ -364,12 +374,16 @@ def _prepare_create(path: str, content: str, ctx: ToolContext):
     rel = ws.relative(target)
     n = len(content.splitlines())
 
+    folders = f" and the folder {ws.relative(new_dirs[0])}" if len(new_dirs) == 1 else \
+        f" and {len(new_dirs)} folders ({ws.relative(new_dirs[0])} ...)" if new_dirs else ""
+
     async def apply(call_id: str) -> str:
         await asyncio.to_thread(apply_change, ws, target, data, kind="create", call_id=call_id,
-                                conversation_id=ctx.conversation_id, expected_sha256=None)
-        return f"Created {rel} ({n} line{'s' if n != 1 else ''})."
+                                conversation_id=ctx.conversation_id, expected_sha256=None, make_dirs=new_dirs)
+        return f"Created {rel}{folders} ({n} line{'s' if n != 1 else ''})."
 
-    return Proposal(summary=f"Create {rel} ({n} line{'s' if n != 1 else ''})", diff=_diff("", content, rel, True), apply=apply)
+    return Proposal(summary=f"Create {rel}{folders} ({n} line{'s' if n != 1 else ''})",
+                    diff=_diff("", content, rel, True), apply=apply)
 
 
 def _prepare_edit(path: str, old_text: str, new_text: str, ctx: ToolContext):

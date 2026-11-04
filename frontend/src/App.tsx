@@ -326,7 +326,6 @@ export default function App() {
       placeholder={isReady || isGenerating || engineStatus?.state === "GENERATING" ? "Ask anything…" : "Load a model to start"}
       externalPrompt={externalPrompt}
       onExternalPromptConsumed={() => setExternalPrompt(undefined)}
-      large={messages.length === 0}
       toolbar={
         <AgentBar
           enabled={agentEnabled}
@@ -376,17 +375,16 @@ export default function App() {
           />
           <ErrorBanner error={activeError} onDismiss={() => setErrorMessage(null)} />
 
-          {messages.length === 0 ? (
-            <StartScreen
-              modelName={isReady || isGenerating ? engineStatus?.model_name : null}
-              agentEnabled={agentEnabled}
-              composer={composer}
-              onQuickPrompt={setExternalPrompt}
-              onEnableAgent={() => handleToggleAgent(true)}
-              onOpenLibrary={setLibraryTab}
-            />
-          ) : (
-            <main className="flex-1 flex flex-col min-h-0">
+          <main className="flex-1 flex flex-col min-h-0">
+            {messages.length === 0 ? (
+              <StartScreen
+                modelName={isReady || isGenerating ? engineStatus?.model_name : null}
+                agentEnabled={agentEnabled}
+                onQuickPrompt={setExternalPrompt}
+                onEnableAgent={() => handleToggleAgent(true)}
+                onOpenLibrary={setLibraryTab}
+              />
+            ) : (
               <ChatInterface
                 messages={messages}
                 isGenerating={isGenerating}
@@ -397,11 +395,12 @@ export default function App() {
                 onApproveChange={handleApproveChange}
                 onUndoChange={handleUndoChange}
               />
-              <div className="shrink-0 px-6 pb-5 pt-2">
-                <div className="max-w-3xl mx-auto">{composer}</div>
-              </div>
-            </main>
-          )}
+            )}
+            {/* One prompt box for the whole session, so sending the first message doesn't rebuild it. */}
+            <div className="shrink-0 px-6 pb-5 pt-2">
+              <div className="max-w-3xl mx-auto">{composer}</div>
+            </div>
+          </main>
         </div>
       </div>
 

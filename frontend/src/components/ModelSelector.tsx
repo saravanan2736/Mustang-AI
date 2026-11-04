@@ -37,9 +37,9 @@ const FIT_TEXT: Record<string, { text: string; cls: string }> = {
 const gb = (mb: number, digits = 1) => `${(mb / 1024).toFixed(digits)} GB`;
 
 export const pillCls =
-  "h-9 px-3 flex items-center gap-1.5 rounded-xl bg-panel/70 border border-line/60 text-[13px] font-medium text-fg hover:bg-raised/80 hover:border-accent/40 backdrop-blur-sm shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed";
+  "h-9 px-3 flex items-center gap-1.5 rounded-xl bg-panel/70 border border-line/60 text-[13px] font-medium text-fg hover:bg-raised/80 hover:border-accent/40 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed";
 const selectCls =
-  "h-9 rounded-xl bg-panel/80 border border-line/60 px-3 text-[13px] font-medium text-fg focus:outline-none focus:border-accent/70 focus:ring-1 focus:ring-accent/30 backdrop-blur-sm shadow-sm transition-all disabled:opacity-50";
+  "h-9 rounded-xl bg-panel/80 border border-line/60 px-3 text-[13px] font-medium text-fg focus:outline-none focus:border-accent/70 focus:ring-1 focus:ring-accent/30 shadow-sm transition-all disabled:opacity-50";
 
 /** Header row of the main panel: pick, load, switch or unload a model; details on demand. */
 export const ModelSelector: React.FC<ModelSelectorProps> = ({
@@ -197,7 +197,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
           <button
             onClick={handleLoadOrSwitch}
             disabled={!selectedModel || busy}
-            className="h-9 px-4 flex items-center gap-1.5 rounded-xl btn-violet text-white text-[13px] font-medium shadow-glow-sm hover:brightness-110 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="h-9 px-4 flex items-center gap-1.5 rounded-xl btn-violet text-white text-[13px] font-medium hover:brightness-110 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {(actionInProgress || isStarting) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             {isDifferentFromActive ? "Switch" : "Load"}
@@ -236,7 +236,7 @@ export const ModelSelector: React.FC<ModelSelectorProps> = ({
       </div>
 
       {showDetails && (
-        <div className="mx-4 mb-2 p-4 rounded-2xl bg-panel/70 backdrop-blur-md border border-line/60 shadow-lg grid grid-cols-1 md:grid-cols-[240px_1fr] gap-x-8 gap-y-3 text-xs animate-slide-up">
+        <div className="mx-4 mb-2 p-4 rounded-2xl bg-panel/70 border border-line/60 shadow-lg grid grid-cols-1 md:grid-cols-[240px_1fr] gap-x-8 gap-y-3 text-xs">
           <div>
             <label htmlFor="gpu-layers" className="flex justify-between text-muted mb-1">
               <span>Layers on GPU</span>

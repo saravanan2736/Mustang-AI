@@ -32,9 +32,9 @@ const DiffView: React.FC<{ diff: string }> = ({ diff }) => (
       const cls = line.startsWith("+++") || line.startsWith("---")
         ? "text-subtle"
         : line.startsWith("+")
-        ? "text-emerald-400 bg-emerald-500/10 px-1 rounded"
+        ? "text-success bg-success/10 px-1 rounded"
         : line.startsWith("-")
-        ? "text-rose-400 bg-rose-500/10 px-1 rounded"
+        ? "text-danger bg-danger/10 px-1 rounded"
         : line.startsWith("@@")
         ? "text-accent/80 font-semibold"
         : "text-muted";
@@ -62,7 +62,7 @@ const StatusIcon: React.FC<{ status: AgentStep["status"] }> = ({ status }) =>
   ) : status === "awaiting" ? (
     <FilePen className="w-3.5 h-3.5 text-warning shrink-0" />
   ) : status === "ok" ? (
-    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
   ) : status === "denied" ? (
     <Ban className="w-3.5 h-3.5 text-subtle shrink-0" />
   ) : (
@@ -80,7 +80,7 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
       if (s.status === "awaiting") {
         // A proposed file change: always open, with the diff and the two answers.
         return (
-          <div key={s.call_id} className="rounded-2xl border border-warning/40 bg-panel/85 backdrop-blur-md p-4 space-y-3 shadow-lg">
+          <div key={s.call_id} className="rounded-2xl border border-warning/40 bg-panel/85 p-4 space-y-3 shadow-lg">
             {s.note && <p className="text-[13px] text-muted">{s.note}</p>}
             <div className="flex items-center gap-2 text-[13px] text-fg">
               <StatusIcon status={s.status} />
@@ -94,7 +94,7 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
               <button
                 type="button"
                 onClick={() => onApprove?.(s.call_id, true)}
-                className="h-7 px-3.5 rounded-xl btn-violet text-white text-xs font-medium shadow-glow-sm hover:brightness-110 transition-all"
+                className="h-7 px-3.5 rounded-xl btn-violet text-white text-xs font-medium hover:brightness-110 transition-all"
               >
                 Approve change
               </button>
@@ -114,7 +114,7 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
       return (
         <div key={s.call_id}>
           {s.note && <p className="text-[13px] text-muted mb-1">{s.note}</p>}
-          <details className="group/step rounded-xl border border-line/60 bg-panel/70 backdrop-blur-sm overflow-hidden shadow-sm transition-colors">
+          <details className="group/step rounded-xl border border-line/60 bg-panel/70 overflow-hidden shadow-sm transition-colors">
             <summary className="flex items-center gap-2 h-8 px-3 cursor-pointer list-none text-xs text-fg select-none hover:bg-raised/40 transition-colors">
               <ChevronRight className="w-3 h-3 text-subtle transition-transform group-open/step:rotate-90 shrink-0" />
               <StatusIcon status={s.status} />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { Check, Copy } from "lucide-react";
 import Prism from "prismjs";
 import "prismjs/components/prism-javascript";
@@ -12,6 +12,8 @@ import "prismjs/components/prism-c";
 import "prismjs/components/prism-cpp";
 import "prismjs/components/prism-markdown";
 
+const escapeHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 interface CodeBlockProps {
   language: string;
   code: string;
@@ -19,16 +21,15 @@ interface CodeBlockProps {
 
 export const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
   const [copied, setCopied] = useState(false);
-  const [highlightedCode, setHighlightedCode] = useState(code);
-
   const cleanLang = (language || "text").toLowerCase().trim();
 
-  useEffect(() => {
+  // Highlighted in the same render (no flash of plain text while a reply streams in).
+  const highlightedCode = useMemo(() => {
     try {
-      const grammar = Prism.languages[cleanLang] || Prism.languages.text;
-      setHighlightedCode(grammar ? Prism.highlight(code, grammar, cleanLang) : code);
+      const grammar = Prism.languages[cleanLang];
+      return grammar ? Prism.highlight(code, grammar, cleanLang) : escapeHtml(code);
     } catch {
-      setHighlightedCode(code);
+      return escapeHtml(code);
     }
   }, [code, cleanLang]);
 
@@ -39,14 +40,14 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ language, code }) => {
   };
 
   return (
-    <div className="my-3.5 rounded-2xl overflow-hidden border border-line/70 bg-panel/85 backdrop-blur-md shadow-md not-prose">
+    <div className="my-3.5 rounded-2xl overflow-hidden border border-line/70 bg-panel/85 shadow-md not-prose">
       <div className="flex items-center justify-between h-8 px-3.5 border-b border-line/50 bg-surface/80 select-none text-xs font-mono text-muted">
         <span className="font-semibold text-accent/90">{cleanLang === "text" ? "" : cleanLang}</span>
         <button
           onClick={copyCode}
           className="flex items-center gap-1.5 h-6 px-2 rounded-lg text-xs font-sans text-subtle hover:text-fg hover:bg-raised/80 hover:border-line/60 border border-transparent transition-all"
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? <Check className="w-3.5 h-3.5 text-success" /> : <Copy className="w-3.5 h-3.5" />}
           <span>{copied ? "Copied" : "Copy"}</span>
         </button>
       </div>

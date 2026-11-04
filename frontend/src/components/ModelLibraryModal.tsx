@@ -11,7 +11,6 @@ import {
   Search,
   HardDrive,
   Cpu,
-  Sparkles,
   ShieldAlert,
   Globe,
   Download,
@@ -237,8 +236,8 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-4xl max-h-[88vh] flex flex-col bg-surface/95 backdrop-blur-xl border border-line/80 rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70">
+      <div className="relative w-full max-w-4xl max-h-[88vh] flex flex-col bg-surface/95 border border-line/80 rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-3.5 border-b border-line/50 bg-panel/60 flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -247,7 +246,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                 onClick={() => setActiveTab("LOCAL")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeTab === "LOCAL"
-                    ? "btn-violet text-white shadow-glow-sm font-semibold"
+                    ? "btn-violet text-white font-semibold"
                     : "text-muted hover:text-fg hover:bg-raised/70"
                 }`}
               >
@@ -261,7 +260,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                 onClick={() => setActiveTab("HF")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeTab === "HF"
-                    ? "btn-violet text-white shadow-glow-sm font-semibold"
+                    ? "btn-violet text-white font-semibold"
                     : "text-muted hover:text-fg hover:bg-raised/70"
                 }`}
               >
@@ -272,7 +271,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                 onClick={() => setActiveTab("DOWNLOADS")}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   activeTab === "DOWNLOADS"
-                    ? "btn-violet text-white shadow-glow-sm font-semibold"
+                    ? "btn-violet text-white font-semibold"
                     : "text-muted hover:text-fg hover:bg-raised/70"
                 }`}
               >
@@ -398,7 +397,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                 <div
                   key={model.id}
                   className={`border rounded-2xl transition-all shadow-sm ${
-                    isLoaded ? "border-accent/80 bg-accent/[0.08] shadow-glow-sm" : "border-line/60 bg-panel/60 hover:bg-panel/80 hover:border-line"
+                    isLoaded ? "border-accent/80 bg-accent/[0.08]" : "border-line/60 bg-panel/60 hover:bg-panel/80 hover:border-line"
                   }`}
                 >
                   <div className="p-4 flex flex-col gap-3">
@@ -410,7 +409,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                             {model.filename}
                           </h3>
                           {isLoaded && (
-                            <span className="flex items-center gap-1 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.2 rounded-full">
+                            <span className="flex items-center gap-1 text-xs font-medium text-success bg-success/10 border border-success/30 px-2 py-0.2 rounded-full">
                               <CheckCircle2 className="w-3.5 h-3.5" /> Loaded
                             </span>
                           )}
@@ -453,7 +452,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                           <button
                             onClick={() => handleLoadModel(model)}
                             disabled={isBusy}
-                            className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl text-xs font-medium text-white btn-violet shadow-glow-sm hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
+                            className="flex items-center gap-1.5 h-8 px-3.5 rounded-xl text-xs font-medium text-white btn-violet hover:brightness-110 transition-all disabled:opacity-50"
                           >
                             {engineStatus?.state === "READY" ? (
                               <>
@@ -522,7 +521,6 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                         onClick={() => handleToggleRecommendations(model)}
                         className="text-xs font-medium text-accent hover:text-accent-hover flex items-center gap-1.5 transition-colors"
                       >
-                        <Sparkles className="w-3.5 h-3.5 text-accent" />
                         <span>
                           {isRecOpen
                             ? "Hide memory by context size"
@@ -538,7 +536,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
 
                     {/* Memory needed per context size */}
                     {isRecOpen && (
-                      <div className="mt-2 p-3.5 bg-canvas/90 border border-line/60 rounded-xl space-y-3 animate-slide-up">
+                      <div className="mt-2 p-3.5 bg-canvas/90 border border-line/60 rounded-xl space-y-3">
                         <div className="flex items-center justify-between text-xs text-fg">
                           <span className="font-semibold flex items-center gap-1.5 text-fg">
                             <Cpu className="w-3.5 h-3.5 text-accent" />
@@ -596,7 +594,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
                                     <span className="text-accent font-semibold">{info.estimated_vram_total_mb} MB</span>
                                   </div>
                                   {info.measured_model_vram_mb != null && (
-                                    <div className="flex justify-between text-emerald-400 border-t border-emerald-500/30 pt-0.5">
+                                    <div className="flex justify-between text-success border-t border-success/30 pt-0.5">
                                       <span>Measured:</span>
                                       <span>{info.measured_model_vram_mb} MB</span>
                                     </div>
@@ -648,10 +646,10 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
 
       {/* Delete Confirmation Modal */}
       {modelToDelete && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-panel/95 backdrop-blur-xl border border-rose-500/40 rounded-2xl p-6 shadow-2xl space-y-4 animate-slide-up">
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/70">
+          <div className="w-full max-w-md bg-panel/95 border border-danger/40 rounded-2xl p-6 shadow-2xl space-y-4">
             <div className="flex items-center gap-3">
-              <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
+              <div className="p-3 rounded-xl bg-danger/10 border border-danger/30 text-danger">
                 <ShieldAlert className="w-6 h-6" />
               </div>
               <div>
@@ -666,7 +664,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
 
             <div className="bg-canvas/90 border border-line/60 rounded-xl p-3.5 text-xs space-y-1.5 font-mono text-fg">
               <div className="text-subtle text-[11px]">Filename:</div>
-              <div className="text-rose-400 font-semibold truncate">{modelToDelete.filename}</div>
+              <div className="text-danger font-semibold truncate">{modelToDelete.filename}</div>
               <div className="text-subtle text-[11px] pt-1">Size:</div>
               <div>{modelToDelete.file_size_gb} GB ({modelToDelete.file_size_bytes.toLocaleString()} bytes)</div>
             </div>
@@ -680,7 +678,7 @@ export const ModelLibraryModal: React.FC<ModelLibraryModalProps> = ({
               </button>
               <button
                 onClick={handleConfirmDelete}
-                className="px-4 py-2 rounded-xl text-xs font-medium bg-rose-600 hover:bg-rose-500 text-white font-semibold shadow-glow-sm transition-all"
+                className="px-4 py-2 rounded-xl text-xs font-medium bg-danger hover:opacity-90 text-white font-semibold transition-all"
               >
                 Permanently Delete
               </button>

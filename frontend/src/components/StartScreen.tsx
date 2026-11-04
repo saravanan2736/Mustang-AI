@@ -5,8 +5,6 @@ import type { LibraryTab } from "./ModelSelector";
 interface StartScreenProps {
   modelName?: string | null;
   agentEnabled: boolean;
-  /** The prompt card, rendered between the quick actions and the feature cards. */
-  composer: React.ReactNode;
   onQuickPrompt: (text: string) => void;
   onEnableAgent: () => void;
   onOpenLibrary: (tab: LibraryTab) => void;
@@ -19,13 +17,12 @@ const QUICK_ACTIONS = [
 ];
 
 const chipCls =
-  "h-8 px-3.5 flex items-center gap-2 rounded-xl bg-panel/70 border border-line/60 text-[13px] font-medium text-muted hover:text-fg hover:bg-raised/80 hover:border-accent/40 backdrop-blur-sm shadow-sm transition-all duration-150";
+  "h-8 px-3 flex items-center gap-2 rounded-lg bg-panel border border-line text-[13px] text-muted hover:text-fg hover:bg-raised transition-colors";
 
-/** Empty chat: greeting, quick actions, the prompt card and what the app can do. */
+/** Empty chat: greeting, quick actions and what the app can do. The prompt box sits below, always. */
 export const StartScreen: React.FC<StartScreenProps> = ({
   modelName,
   agentEnabled,
-  composer,
   onQuickPrompt,
   onEnableAgent,
   onOpenLibrary,
@@ -56,56 +53,50 @@ export const StartScreen: React.FC<StartScreenProps> = ({
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="min-h-full max-w-3xl mx-auto px-6 py-10 flex flex-col justify-center animate-fade-in">
-        <div className="flex flex-col items-center text-center mb-8">
-          <div className="orb w-16 h-16 rounded-full mb-5 transition-transform hover:scale-105 duration-300" aria-hidden />
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="min-h-full max-w-3xl mx-auto px-6 py-10 flex flex-col justify-center">
+        <div className="flex flex-col items-center text-center mb-6">
           <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-fg">What are we working on today?</h1>
           <p className="mt-2.5 text-[13px] text-muted max-w-md leading-relaxed">
             {modelName ? (
-              <span>Running locally on <strong className="text-fg font-medium">{modelName.replace(/\.gguf$/i, "")}</strong>.</span>
+              <span>
+                Running locally on <strong className="text-fg font-medium">{modelName.replace(/\.gguf$/i, "")}</strong>.
+              </span>
             ) : (
               "Load a model above to start. Everything stays on this PC."
             )}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center justify-center gap-2 mb-8">
           {QUICK_ACTIONS.map(({ label, icon: Icon, prompt }) => (
             <button key={label} type="button" onClick={() => onQuickPrompt(prompt)} className={chipCls}>
+              <Icon className="w-3.5 h-3.5 text-subtle" />
               <span>{label}</span>
-              <Icon className="w-3.5 h-3.5 text-accent/80" />
             </button>
           ))}
         </div>
 
-        {composer}
-
-        <div className="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {cards.map(({ icon: Icon, title, text, action, onClick, disabled }) => (
-            <div
-              key={title}
-              className="rounded-2xl bg-panel/60 border border-line/60 hover:border-accent/30 hover:bg-panel/85 backdrop-blur-md p-4 transition-all duration-200 shadow-sm hover:shadow-glow-sm flex flex-col justify-between"
-            >
+            <div key={title} className="rounded-xl bg-panel border border-line p-4 flex flex-col justify-between">
               <div>
                 <div className="flex items-start justify-between mb-3">
-                  <span className="w-8 h-8 flex items-center justify-center rounded-xl bg-raised/80 border border-line/60 text-accent shadow-sm">
+                  <span className="w-8 h-8 flex items-center justify-center rounded-lg bg-raised text-muted">
                     <Icon className="w-4 h-4" />
                   </span>
                   <button
                     type="button"
                     onClick={onClick}
                     disabled={disabled}
-                    className={`h-6 px-3 rounded-lg text-xs font-medium transition-all ${
-                      disabled
-                        ? "bg-accent/15 border border-accent/30 text-link cursor-default"
-                        : "bg-raised/90 border border-line/70 text-fg hover:bg-accent/20 hover:border-accent/50 hover:text-white"
+                    className={`h-6 px-3 rounded-md text-xs font-medium transition-colors ${
+                      disabled ? "text-link cursor-default" : "bg-raised border border-line text-fg hover:bg-line"
                     }`}
                   >
                     {action}
                   </button>
                 </div>
-                <h3 className="text-[13px] font-semibold text-fg tracking-tight">{title}</h3>
+                <h3 className="text-[13px] font-semibold text-fg">{title}</h3>
                 <p className="mt-1 text-xs text-muted leading-relaxed">{text}</p>
               </div>
             </div>
