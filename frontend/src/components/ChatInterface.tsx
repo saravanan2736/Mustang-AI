@@ -146,6 +146,13 @@ const AssistantMessage = memo(function AssistantMessage({
       {msg.steps?.length ? (
         <ToolSteps steps={msg.steps} stopReason={msg.agent_stop_reason} changes={changes} onApprove={onApprove} onUndo={onUndo} />
       ) : null}
+      {!text && !msg.steps?.length && (
+        <p className={`text-[13px] text-subtle ${streaming ? "animate-pulse" : ""}`}>
+          {streaming
+            ? "Thinking…"
+            : "No answer came back. The model may have used its whole token limit while thinking. Try again, or raise Max tokens in Settings."}
+        </p>
+      )}
       <div className="markdown-content text-[14px] text-fg break-words">
         <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>
           {text}
@@ -199,12 +206,21 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: smooth ? "smooth" : "auto" });
   }, []);
 
+  const lastTop = useRef(0);
+  const lastHeight = useRef(0);
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < FOLLOW_THRESHOLD;
-    following.current = atBottom;
-    setShowLatest(!atBottom);
+    // Content growing under us (a burst of tokens) must not count as the reader leaving the
+    // bottom; only moving up does.
+    // A shrinking page (a card collapsing) also lowers scrollTop; that isn't the reader either.
+    const movedUp = el.scrollTop < lastTop.current - 1 && el.scrollHeight >= lastHeight.current;
+    lastTop.current = el.scrollTop;
+    lastHeight.current = el.scrollHeight;
+    if (atBottom) following.current = true;
+    else if (movedUp) following.current = false;
+    setShowLatest(!following.current && !atBottom);
   };
 
   // A different conversation opens at its end.
