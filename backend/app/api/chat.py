@@ -30,6 +30,12 @@ from app.core.engine_base import (
 from app.db.database import get_db
 
 logger = logging.getLogger("mustang.chat")
+
+def _describe(exc: BaseException) -> str:
+    """An error as text the user can read: some exceptions (timeouts, dropped connections) have none."""
+    return str(exc).strip() or f"{type(exc).__name__}: the model engine stopped responding. Try again."
+
+
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
 
@@ -162,8 +168,8 @@ async def _stream_agent_response(
             await save_answer()
             yield "data: [DONE]\n\n"
         except Exception as exc:
-            logger.error(f"Agent streaming error: {exc}")
-            err = {"id": completion_id, "error": str(exc), "choices": [{"index": 0, "delta": {}, "finish_reason": "error"}]}
+            logger.error(f"Agent streaming error: {_describe(exc)}", exc_info=True)
+            err = {"id": completion_id, "error": _describe(exc), "choices": [{"index": 0, "delta": {}, "finish_reason": "error"}]}
             yield f"data: {json.dumps(err)}\n\n"
             yield "data: [DONE]\n\n"
         finally:
@@ -249,10 +255,10 @@ async def _stream_chat_response(
             yield "data: [DONE]\n\n"
 
         except Exception as exc:
-            logger.error(f"Streaming error: {exc}")
+            logger.error(f"Streaming error: {_describe(exc)}", exc_info=True)
             err_payload = {
                 "id": completion_id,
-                "error": str(exc),
+                "error": _describe(exc),
                 "choices": [{"index": 0, "delta": {}, "finish_reason": "error"}],
             }
             yield f"data: {json.dumps(err_payload)}\n\n"

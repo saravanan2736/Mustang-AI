@@ -19,6 +19,7 @@ from typing import AsyncIterator
 import httpx
 
 from app.config import settings
+from app.core.history import fit_messages
 from app.core.engine_base import (
     ChatChunk,
     ChatCompletionRequest,
@@ -505,9 +506,13 @@ class LlamaServerEngine(InferenceEngine):
             self._state = EngineState.GENERATING
             url = f"http://{self._config.host}:{self._config.port}/v1/chat/completions"
             
+            wire_tools = [t.model_dump(exclude_none=True) for t in request.tools] if request.tools else None
+            wire_messages, _ = fit_messages(
+                [_wire_message(m) for m in request.messages], self._config.n_ctx, request.max_tokens, wire_tools
+            )
             payload = {
                 "model": self._config.model_path.name,
-                "messages": [_wire_message(m) for m in request.messages],
+                "messages": wire_messages,
                 "temperature": request.temperature,
                 "top_p": request.top_p,
                 "top_k": request.top_k,
@@ -515,8 +520,8 @@ class LlamaServerEngine(InferenceEngine):
                 "repeat_penalty": request.repeat_penalty,
                 "stream": True,
             }
-            if request.tools:
-                payload["tools"] = [t.model_dump(exclude_none=True) for t in request.tools]
+            if wire_tools:
+                payload["tools"] = wire_tools
             if request.tool_choice is not None:
                 payload["tool_choice"] = request.tool_choice
             tool_calls = _ToolCallAssembler()
@@ -528,7 +533,10 @@ class LlamaServerEngine(InferenceEngine):
             try:
                 client = self._http
                 self._active_client = client
-                async with client.stream("POST", url, json=payload, headers=self._auth_headers()) as resp:
+                # No read timeout: a big model can be silent for minutes while it reads a long prompt or
+                # thinks. Stop cancels the stream, and a dead llama-server is caught by the health monitor.
+                async with client.stream("POST", url, json=payload, headers=self._auth_headers(),
+                                         timeout=httpx.Timeout(None, connect=10.0)) as resp:
                     self._active_response = resp
                     if resp.status_code != 200:
                         err_body = await resp.aread()
