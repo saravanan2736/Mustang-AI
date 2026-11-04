@@ -84,7 +84,12 @@ def fit_messages(messages: list[dict], n_ctx: int, max_tokens: int, tools: list 
             m["content"] = _cut(m["content"], keep)
 
     if dropped:
-        note = {"role": "system", "content": NOTE}
-        system = system + [note]
+        # One system message only: several chat templates (Qwen, Gemma) reject a second one.
+        if system:
+            first = dict(system[0])
+            first["content"] = ((first.get("content") or "") + "\n\n" + NOTE).strip()
+            system = [first] + system[1:]
+        else:
+            system = [{"role": "system", "content": NOTE}]
         logger.info("History trimmed to fit %d tokens: %d older messages left out", n_ctx, dropped)
     return system + rest, dropped

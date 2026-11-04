@@ -32,7 +32,7 @@ def test_a_long_chat_is_trimmed_to_the_window_and_keeps_the_latest_turn():
     msgs = _chat(60, tool_chars=4000)
     out, dropped = fit_messages(msgs, 4096, 1024)
     assert dropped > 0 and _tokens(out) <= 4096 - 1024
-    assert out[0]["content"] == "You are helpful." and out[1]["content"] == NOTE
+    assert out[0]["content"].startswith("You are helpful.") and NOTE in out[0]["content"]
     assert out[-1] == msgs[-1] and out[-4]["content"].startswith("question 59")
 
 
@@ -74,3 +74,17 @@ def test_the_input_is_not_modified():
     snapshot = [dict(m) for m in msgs]
     fit_messages(msgs, 4096, 1024)
     assert msgs == snapshot
+
+
+def test_a_trimmed_chat_still_has_a_single_system_message_at_the_start():
+    """Qwen and Gemma templates reject a second system message ("System message must be at the beginning")."""
+    for with_system in (True, False):
+        msgs = _chat(60, tool_chars=4000)
+        if not with_system:
+            msgs = msgs[1:]
+        out, dropped = fit_messages(msgs, 4096, 1024)
+        assert dropped > 0
+        assert [i for i, m in enumerate(out) if m["role"] == "system"] == [0]
+        assert NOTE in out[0]["content"]
+        if with_system:
+            assert out[0]["content"].startswith("You are helpful.")
