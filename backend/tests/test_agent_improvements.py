@@ -232,3 +232,39 @@ def test_the_step_limit_option_allows_long_projects():
 
     assert loop.DEFAULT_MAX_STEPS >= 20 and AgentOptions().max_steps == loop.DEFAULT_MAX_STEPS
     assert AgentOptions(max_steps=60).max_steps == 60
+
+
+# --- small context windows (found in the installed app: a 4k window made the agent forget its task) ---
+
+def test_a_file_read_is_sized_to_the_context_window():
+    assert tools.read_limit_for_context(4096) == 2048
+    assert tools.read_limit_for_context(2048) == 1500, "never below a useful minimum"
+    assert tools.read_limit_for_context(8192) == 4096
+    assert tools.read_limit_for_context(16384) == tools.MAX_READ_CHARS == tools.read_limit_for_context(65536)
+    assert tools.read_limit_for_context(0) == tools.MAX_READ_CHARS, "unknown context: the normal limit"
+
+
+def test_read_file_uses_the_limit_from_the_context(ctx):
+    ctx.read_chars = tools.read_limit_for_context(4096)
+    out = tools._read_file("long.txt", ctx)
+    assert len(out) < 2048 + 300 and "[Lines 1-" in out and "start_line=" in out
+    ctx.read_chars = tools.MAX_READ_CHARS
+    assert len(tools._read_file("long.txt", ctx)) > 7000
+
+
+@pytest.mark.asyncio
+async def test_the_chat_endpoint_sizes_reads_from_the_loaded_models_context(async_client, scripted_engine, tmp_path, monkeypatch):
+    from app.core.engine_base import EngineState, EngineStatus
+
+    (tmp_path / "big.txt").write_text("".join(f"line {i} " + "x" * 90 + "\n" for i in range(1, 200)), encoding="utf-8")
+    eng = scripted_engine([{"calls": [("read_file", json.dumps({"path": "big.txt"}))]}, {"text": "ok"}])
+
+    async def status():
+        return EngineStatus(state=EngineState.READY, model_name="m.gguf", context_size=4096)
+
+    monkeypatch.setattr(eng, "get_status", status)
+    res = await async_client.post("/api/chat/completions", json={
+        "conversation_id": "ctx1", "messages": [{"role": "user", "content": "read big.txt"}], "agent": {"workspace": str(tmp_path)}})
+    assert res.status_code == 200
+    tool_msg = next(m for m in eng.requests[1].messages if m.role == "tool")
+    assert len(tool_msg.content) < 2048 + 300 and "start_line=" in tool_msg.content

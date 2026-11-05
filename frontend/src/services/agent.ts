@@ -22,6 +22,11 @@ export interface AgentEvent {
 /** Tools that change files: every call is shown as a diff and needs the user's approval. */
 export const CHANGE_TOOLS = new Set(["create_file", "edit_file"]);
 
+/** Agent mode needs room for its instructions, the tool list, file reads and the chat: 8k is the least. */
+export const AGENT_MIN_CONTEXT = 8192;
+/** The context the "Reload" button asks for. */
+export const AGENT_CONTEXT = 16384;
+
 /** The terminal tool: the exact command is shown and every run needs approval ("approve all" never covers it). */
 export const COMMAND_TOOL = "run_command";
 

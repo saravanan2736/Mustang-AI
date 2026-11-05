@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { AlertTriangle, Folder, SquareTerminal, Wrench, X } from "lucide-react";
-import { SMALL_AGENT_MODEL_B, modelSizeB } from "../services/agent";
+import { AGENT_CONTEXT, AGENT_MIN_CONTEXT, SMALL_AGENT_MODEL_B, modelSizeB } from "../services/agent";
 
 interface AgentBarProps {
   enabled: boolean;
@@ -13,6 +13,9 @@ interface AgentBarProps {
   /** Terminal access is on for this chat. */
   terminal?: boolean;
   onToggleTerminal?: (enabled: boolean) => void;
+  /** Context window of the loaded model; agent work needs at least AGENT_MIN_CONTEXT. */
+  contextSize?: number;
+  onUseBiggerContext?: () => void;
   onToggle: (enabled: boolean) => void;
   onChooseWorkspace: () => void;
   onClearWorkspace: () => void;
@@ -31,6 +34,8 @@ export const AgentBar: React.FC<AgentBarProps> = ({
   onTurnOffAutoApprove,
   terminal,
   onToggleTerminal,
+  contextSize,
+  onUseBiggerContext,
   onToggle,
   onChooseWorkspace,
   onClearWorkspace,
@@ -161,6 +166,25 @@ export const AgentBar: React.FC<AgentBarProps> = ({
           Auto-approve on
           <X className="w-3 h-3" />
         </button>
+      )}
+
+      {enabled && contextSize !== undefined && contextSize > 0 && contextSize < AGENT_MIN_CONTEXT && (
+        <span className="flex flex-wrap items-center gap-2 px-2.5 py-1 rounded-xl bg-warning/10 border border-warning/30 text-[12px] text-warning">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+          <span>
+            The context is {contextSize.toLocaleString()}: too small for agent work (the model forgets the task).
+          </span>
+          {onUseBiggerContext && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onUseBiggerContext}
+              className="h-6 px-2.5 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+            >
+              Reload with {AGENT_CONTEXT.toLocaleString()}
+            </button>
+          )}
+        </span>
       )}
 
       {smallModel && (

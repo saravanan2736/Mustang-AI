@@ -183,7 +183,15 @@ def _list_files(path: str, ctx: ToolContext) -> str:
     return header + "\n" + "\n".join(shown) + more
 
 
+def read_limit_for_context(n_ctx: int) -> int:
+    """How much of a file one read may return: about a sixth of the context window (3 characters is
+    about a token), between 1,500 and MAX_READ_CHARS. A fixed 8,000 characters left no room for
+    anything else in a 4k window, and the history trimming then dropped the user's task."""
+    return max(1_500, min(MAX_READ_CHARS, n_ctx // 2)) if n_ctx > 0 else MAX_READ_CHARS
+
+
 def _read_file(path: str, ctx: ToolContext, start_line: int | None = None, end_line: int | None = None) -> str:
+    limit = ctx.read_chars or MAX_READ_CHARS
     target = _resolve(ctx, path)
     if target.is_dir():
         raise ToolError(f"{path!r} is a folder. Use list_files.")
@@ -206,10 +214,10 @@ def _read_file(path: str, ctx: ToolContext, start_line: int | None = None, end_l
     out, used, n, cut_line = [], 0, first, None
     while n <= last:
         line = lines[n - 1]
-        if out and used + len(line) > MAX_READ_CHARS:
+        if out and used + len(line) > limit:
             break
-        if len(line) > MAX_READ_CHARS:
-            cut_line, line = n, line[:MAX_READ_CHARS]
+        if len(line) > limit:
+            cut_line, line = n, line[:limit]
         out.append(line)
         used += len(line)
         n += 1
@@ -219,7 +227,7 @@ def _read_file(path: str, ctx: ToolContext, start_line: int | None = None, end_l
         return body  # the whole file, unchanged
     tail = ""
     if cut_line is not None:
-        tail = f" Line {cut_line} is longer than {MAX_READ_CHARS} characters and was cut."
+        tail = f" Line {cut_line} is longer than {limit} characters and was cut."
     if shown_last < total:
         tail += f" To read more, call read_file again with start_line={shown_last + 1}."
     of = f"{total}+" if partial_file else str(total)

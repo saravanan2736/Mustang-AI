@@ -8,7 +8,7 @@ import { PromptInput } from "./components/PromptInput";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { SettingsModal } from "./components/SettingsModal";
 import { AgentBar } from "./components/AgentBar";
-import { groupAgentMessages } from "./services/agent";
+import { AGENT_CONTEXT, groupAgentMessages } from "./services/agent";
 import { isDesktop } from "./services/connection";
 import { chooseWorkspaceFolder } from "./services/desktop";
 import { useHardware } from "./hooks/useHardware";
@@ -26,6 +26,7 @@ import {
   approveAgentChange,
   fetchAgentChanges,
   undoAgentChange,
+  loadModel,
 } from "./services/api";
 import {
   AgentChange,
@@ -232,6 +233,17 @@ export default function App() {
     if (await saveAgentSettings({ agent_enabled: enabled })) setAgentEnabled(enabled);
   };
 
+  const handleReloadBigger = async () => {
+    const name = engineStatus?.model_name;
+    if (!name) return;
+    setErrorMessage(null);
+    try {
+      setEngineStatus(await loadModel(name, 99, AGENT_CONTEXT));
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not reload the model with a larger context");
+    }
+  };
+
   const handleToggleTerminal = async (enabled: boolean) => {
     if (await saveAgentSettings({ terminal_enabled: enabled })) setTerminalEnabled(enabled);
   };
@@ -347,6 +359,8 @@ export default function App() {
           disabled={isGenerating}
           terminal={terminalEnabled}
           onToggleTerminal={handleToggleTerminal}
+          contextSize={isReady ? engineStatus?.context_size : undefined}
+          onUseBiggerContext={handleReloadBigger}
           autoApprove={Boolean(activeConversationId && autoApproveChats[activeConversationId])}
           onTurnOffAutoApprove={() => activeConversationId && setAutoApproveChats((prev) => ({ ...prev, [activeConversationId]: false }))}
           onToggle={handleToggleAgent}

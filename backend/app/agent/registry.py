@@ -21,6 +21,7 @@ class ToolContext:
     workspace: Workspace | None = None
     conversation_id: str | None = None
     terminal: bool = False  # the user turned Terminal on for this chat (run_command is offered)
+    read_chars: int = 8_000  # most characters one read_file call returns (smaller for a small context window)
 
 
 @dataclass
