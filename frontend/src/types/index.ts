@@ -153,6 +153,7 @@ export interface ConversationDetail {
   updated_at: number;
   messages: ChatMessage[];
   agent_enabled?: boolean;
+  terminal_enabled?: boolean;
   workspace?: string | null;
 }
 

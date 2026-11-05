@@ -1,5 +1,5 @@
-import React from "react";
-import { AlertTriangle, Folder, Wrench, X } from "lucide-react";
+import React, { useState } from "react";
+import { AlertTriangle, Folder, SquareTerminal, Wrench, X } from "lucide-react";
 import { SMALL_AGENT_MODEL_B, modelSizeB } from "../services/agent";
 
 interface AgentBarProps {
@@ -10,6 +10,9 @@ interface AgentBarProps {
   /** "Approve all changes" is on for this chat. */
   autoApprove?: boolean;
   onTurnOffAutoApprove?: () => void;
+  /** Terminal access is on for this chat. */
+  terminal?: boolean;
+  onToggleTerminal?: (enabled: boolean) => void;
   onToggle: (enabled: boolean) => void;
   onChooseWorkspace: () => void;
   onClearWorkspace: () => void;
@@ -26,12 +29,15 @@ export const AgentBar: React.FC<AgentBarProps> = ({
   disabled,
   autoApprove,
   onTurnOffAutoApprove,
+  terminal,
+  onToggleTerminal,
   onToggle,
   onChooseWorkspace,
   onClearWorkspace,
 }) => {
   const size = modelSizeB(modelName);
   const smallModel = enabled && size !== null && size < SMALL_AGENT_MODEL_B;
+  const [asking, setAsking] = useState(false); // the "allow terminal access?" question is open
   const folderName = workspace ? workspace.split(/[\\/]/).filter(Boolean).pop() : null;
 
   return (
@@ -90,6 +96,59 @@ export const AgentBar: React.FC<AgentBarProps> = ({
             </button>
           )}
         </>
+      )}
+
+      {enabled && workspace && (
+        <button
+          type="button"
+          role="switch"
+          aria-checked={Boolean(terminal)}
+          disabled={disabled}
+          onClick={() => (terminal ? onToggleTerminal?.(false) : setAsking(true))}
+          title={
+            terminal
+              ? "Terminal is on: the model may propose PowerShell commands in the workspace. You approve every command before it runs. Click to turn off."
+              : "Let the model propose terminal commands (builds, tests, git). Off by default; you approve every command."
+          }
+          className={`${toolCls} ${
+            terminal
+              ? "bg-warning/10 border border-warning/30 text-warning font-semibold"
+              : "text-muted hover:text-fg hover:bg-raised/70 border border-transparent"
+          }`}
+        >
+          <SquareTerminal className="w-3.5 h-3.5" />
+          Terminal{terminal ? " on" : ""}
+        </button>
+      )}
+
+      {enabled && workspace && asking && !terminal && (
+        <span
+          role="alertdialog"
+          aria-label="Allow terminal access"
+          className="flex flex-wrap items-center gap-2 px-2.5 py-1 rounded-xl bg-warning/10 border border-warning/30 text-[12px] text-fg"
+        >
+          <span className="max-w-[360px]">
+            Let the model propose PowerShell commands in this folder? You see and approve every command first; they run with
+            your own permissions.
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setAsking(false);
+              onToggleTerminal?.(true);
+            }}
+            className="h-6 px-2.5 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors"
+          >
+            Allow
+          </button>
+          <button
+            type="button"
+            onClick={() => setAsking(false)}
+            className="h-6 px-2.5 rounded-md border border-line text-xs text-fg hover:bg-raised transition-colors"
+          >
+            Cancel
+          </button>
+        </span>
       )}
 
       {enabled && autoApprove && (

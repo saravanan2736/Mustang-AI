@@ -22,9 +22,14 @@ export interface AgentEvent {
 /** Tools that change files: every call is shown as a diff and needs the user's approval. */
 export const CHANGE_TOOLS = new Set(["create_file", "edit_file"]);
 
+/** The terminal tool: the exact command is shown and every run needs approval ("approve all" never covers it). */
+export const COMMAND_TOOL = "run_command";
+
 const DENIED_PREFIX = "The user denied this change";
 
 function resultStatus(ok: boolean, text: string): AgentStep["status"] {
+  // A command that ran but exited with an error (or was stopped / timed out) is shown as a failure.
+  if (ok && /^(Exit code: (?!0\b)|The command (did not finish|was stopped))/.test(text)) return "error";
   if (ok) return "ok";
   return text.startsWith(DENIED_PREFIX) ? "denied" : "error";
 }

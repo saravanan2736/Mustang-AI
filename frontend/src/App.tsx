@@ -51,9 +51,10 @@ export default function App() {
   // Agent mode of the open chat (saved per conversation; a new chat starts with it off)
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [workspace, setWorkspace] = useState<string | null>(null);
+  const [terminalEnabled, setTerminalEnabled] = useState(false);
   // Chats where the user chose "Approve all" (kept for this session only, never saved).
   const [autoApproveChats, setAutoApproveChats] = useState<Record<string, boolean>>({});
-  const agentOptions = agentEnabled ? { workspace, autoApprove: Boolean(activeConversationId && autoApproveChats[activeConversationId]) } : null;
+  const agentOptions = agentEnabled ? { workspace, terminal: terminalEnabled && Boolean(workspace), autoApprove: Boolean(activeConversationId && autoApproveChats[activeConversationId]) } : null;
   // File changes agent mode made in this chat, by tool call id (for Undo)
   const [agentChanges, setAgentChanges] = useState<Record<string, AgentChange>>({});
 
@@ -162,6 +163,7 @@ export default function App() {
       setMessages(groupAgentMessages(detail.messages));
       setAgentEnabled(Boolean(detail.agent_enabled));
       setWorkspace(detail.workspace ?? null);
+      setTerminalEnabled(Boolean(detail.terminal_enabled));
       // If conversation has a custom profile or system prompt, match profile
       if (detail.profile_id) {
         const matchingProfile = profiles.find((p) => p.id === detail.profile_id);
@@ -187,13 +189,14 @@ export default function App() {
       setMessages([]);
       setAgentEnabled(false);
       setWorkspace(null);
+      setTerminalEnabled(false);
     } catch (err) {
       console.error("Failed to create new conversation:", err);
     }
   };
 
   /** Save agent mode / workspace on the open chat (or keep them for the chat the next send creates). */
-  const saveAgentSettings = async (change: { agent_enabled?: boolean; workspace?: string }) => {
+  const saveAgentSettings = async (change: { agent_enabled?: boolean; workspace?: string; terminal_enabled?: boolean }) => {
     if (!activeConversationId) return true;
     try {
       await updateConversation(activeConversationId, change);
@@ -227,6 +230,10 @@ export default function App() {
 
   const handleToggleAgent = async (enabled: boolean) => {
     if (await saveAgentSettings({ agent_enabled: enabled })) setAgentEnabled(enabled);
+  };
+
+  const handleToggleTerminal = async (enabled: boolean) => {
+    if (await saveAgentSettings({ terminal_enabled: enabled })) setTerminalEnabled(enabled);
   };
 
   const handleChooseWorkspace = async () => {
@@ -287,6 +294,7 @@ export default function App() {
         profile_id: activeProfile?.id || "default",
         agent_enabled: agentEnabled,
         workspace,
+        terminal_enabled: terminalEnabled && Boolean(workspace),
       });
       setConversations((prev) => [created, ...prev]);
       setActiveConversationId(created.id);
@@ -337,6 +345,8 @@ export default function App() {
           workspace={workspace}
           modelName={engineStatus?.model_name}
           disabled={isGenerating}
+          terminal={terminalEnabled}
+          onToggleTerminal={handleToggleTerminal}
           autoApprove={Boolean(activeConversationId && autoApproveChats[activeConversationId])}
           onTurnOffAutoApprove={() => activeConversationId && setAutoApproveChats((prev) => ({ ...prev, [activeConversationId]: false }))}
           onToggle={handleToggleAgent}

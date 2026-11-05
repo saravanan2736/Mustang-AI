@@ -8,10 +8,14 @@ export interface AgentRequestOptions {
   workspace?: string | null;
   /** The user chose "Approve all changes" in this chat: changes are written without waiting. */
   autoApprove?: boolean;
+  /** Terminal is on for this chat: the model may propose commands (each one is approved). */
+  terminal?: boolean;
 }
 
 const agentBody = (agent?: AgentRequestOptions | null) =>
-  agent ? { agent: { workspace: agent.workspace || null, auto_approve: Boolean(agent.autoApprove) } } : {};
+  agent
+    ? { agent: { workspace: agent.workspace || null, auto_approve: Boolean(agent.autoApprove), terminal: Boolean(agent.terminal) } }
+    : {};
 
 export function useChatStream() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);

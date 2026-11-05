@@ -283,6 +283,7 @@ export async function createConversation(data: {
   profile_id?: string;
   agent_enabled?: boolean;
   workspace?: string | null;
+  terminal_enabled?: boolean;
 }): Promise<ConversationSummary> {
   const res = await apiFetch(`/api/conversations`, {
     method: "POST",
@@ -309,6 +310,8 @@ export async function updateConversation(
     agent_enabled?: boolean;
     /** Agent mode's workspace folder; "" clears it. */
     workspace?: string;
+    /** Terminal access for the agent (each command is still approved). */
+    terminal_enabled?: boolean;
   }
 ): Promise<ConversationSummary> {
   const res = await apiFetch(`/api/conversations/${encodeURIComponent(id)}`, {

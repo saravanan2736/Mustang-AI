@@ -44,6 +44,7 @@ class AgentOptions(BaseModel):
     workspace: str | None = Field(default=None, max_length=1024)  # folder the file tools may read
     max_steps: int = Field(default=DEFAULT_MAX_STEPS, ge=1, le=60)
     auto_approve: bool = False  # the user chose "approve all changes in this chat" (the UI keeps it per chat)
+    terminal: bool = False  # the user turned Terminal on for this chat: run_command is offered (each run is approved)
 
 
 class UIChatRequest(ChatCompletionRequest):
@@ -65,7 +66,7 @@ def _agent_context(options: AgentOptions, conv_id: str) -> ToolContext:
         workspace = Workspace(options.workspace) if options.workspace else None
     except WorkspaceError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Workspace: {e}")
-    return ToolContext(workspace=workspace, conversation_id=conv_id)
+    return ToolContext(workspace=workspace, conversation_id=conv_id, terminal=bool(options.terminal and workspace))
 
 
 def _history_message(row) -> ChatMessage:

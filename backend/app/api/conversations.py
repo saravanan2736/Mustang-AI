@@ -27,6 +27,7 @@ class CreateConversationRequest(BaseModel):
     profile_id: str = "default"
     agent_enabled: bool = False
     workspace: str | None = Field(default=None, max_length=1024)
+    terminal_enabled: bool = False
 
 
 class UpdateConversationRequest(BaseModel):
@@ -35,6 +36,7 @@ class UpdateConversationRequest(BaseModel):
     profile_id: str | None = None
     model: str | None = None
     agent_enabled: bool | None = None
+    terminal_enabled: bool | None = None
     workspace: str | None = Field(default=None, max_length=1024)  # "" clears it
 
 
@@ -105,6 +107,7 @@ class ConversationDetail(BaseModel):
     messages: list[MessageItem]
     agent_enabled: bool = False
     workspace: str | None = None
+    terminal_enabled: bool = False
 
 
 # --- Endpoints ---
@@ -161,10 +164,11 @@ async def create_conversation(req: CreateConversationRequest):
     try:
         await db.execute(
             """
-            INSERT INTO conversations (id, title, model, system_prompt, profile_id, created_at, updated_at, agent_enabled, workspace)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO conversations (id, title, model, system_prompt, profile_id, created_at, updated_at, agent_enabled, workspace, terminal_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (conv_id, title, req.model, req.system_prompt, req.profile_id, now, now, int(req.agent_enabled), workspace),
+            (conv_id, title, req.model, req.system_prompt, req.profile_id, now, now, int(req.agent_enabled), workspace,
+             int(req.terminal_enabled)),
         )
         await db.commit()
         return ConversationSummary(
@@ -227,6 +231,7 @@ async def get_conversation(conversation_id: str):
             messages=messages,
             agent_enabled=bool(conv["agent_enabled"]),
             workspace=conv["workspace"],
+            terminal_enabled=bool(conv["terminal_enabled"]),
         )
     finally:
         await db.close()
@@ -253,15 +258,16 @@ async def update_conversation(conversation_id: str, req: UpdateConversationReque
         new_model = req.model if req.model is not None else conv["model"]
         new_agent = int(req.agent_enabled) if req.agent_enabled is not None else conv["agent_enabled"]
         new_workspace = _checked_workspace(req.workspace) if req.workspace is not None else conv["workspace"]
+        new_terminal = int(req.terminal_enabled) if req.terminal_enabled is not None else conv["terminal_enabled"]
         now = time.time()
 
         await db.execute(
             """
             UPDATE conversations
-            SET title = ?, system_prompt = ?, profile_id = ?, model = ?, agent_enabled = ?, workspace = ?, updated_at = ?
+            SET title = ?, system_prompt = ?, profile_id = ?, model = ?, agent_enabled = ?, workspace = ?, terminal_enabled = ?, updated_at = ?
             WHERE id = ?
             """,
-            (new_title, new_prompt, new_profile, new_model, new_agent, new_workspace, now, conversation_id),
+            (new_title, new_prompt, new_profile, new_model, new_agent, new_workspace, new_terminal, now, conversation_id),
         )
         await db.commit()
 

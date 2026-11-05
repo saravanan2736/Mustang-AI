@@ -20,6 +20,7 @@ class ToolError(Exception):
 class ToolContext:
     workspace: Workspace | None = None
     conversation_id: str | None = None
+    terminal: bool = False  # the user turned Terminal on for this chat (run_command is offered)
 
 
 @dataclass
@@ -29,6 +30,7 @@ class Proposal:
     summary: str
     diff: str
     apply: Callable[[str], Awaitable[str]]
+    always_ask: bool = False  # never covered by "approve all" (terminal commands)
 
 
 Handler = Callable[[dict[str, Any], ToolContext], Awaitable["str | Proposal"]]
@@ -41,6 +43,7 @@ class ToolSpec:
     parameters: dict[str, Any]
     handler: Handler  # read-only tools return the result; approval tools return a Proposal
     needs_workspace: bool = False
+    needs_terminal: bool = False  # offered only when the user turned Terminal on for the chat
     read_only: bool = True
     needs_approval: bool = False
     timeout_s: float = 10.0
@@ -101,9 +104,10 @@ def register(spec: ToolSpec) -> ToolSpec:
 
 def available_tools(ctx: ToolContext) -> list[ToolSpec]:
     """Tools offered for this context: file tools only when a workspace is open."""
-    from app.agent import tools  # noqa: F401  (registers the built-in tools)
+    from app.agent import terminal, tools  # noqa: F401  (registers the built-in tools)
 
-    return [t for t in _REGISTRY.values() if ctx.workspace is not None or not t.needs_workspace]
+    return [t for t in _REGISTRY.values()
+            if (ctx.workspace is not None or not t.needs_workspace) and (ctx.terminal or not t.needs_terminal)]
 
 
 def get_tool(name: str, ctx: ToolContext) -> ToolSpec | None:

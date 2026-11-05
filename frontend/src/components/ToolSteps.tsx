@@ -1,7 +1,7 @@
 import React from "react";
 import { Ban, CheckCircle2, ChevronRight, FilePen, Loader2, RotateCcw, XCircle } from "lucide-react";
 import { AgentChange, AgentStep } from "../types";
-import { CHANGE_TOOLS, STOP_REASON_TEXT } from "../services/agent";
+import { CHANGE_TOOLS, COMMAND_TOOL, STOP_REASON_TEXT } from "../services/agent";
 
 const TOOL_LABELS: Record<string, string> = {
   get_current_time: "Checked the time",
@@ -12,18 +12,26 @@ const TOOL_LABELS: Record<string, string> = {
   search_history: "Searched this chat",
   create_file: "Create file",
   edit_file: "Edit file",
+  run_command: "Run command",
 };
 
 /** The one argument worth showing in the card's title line. */
 function argumentSummary(raw: string): string {
   try {
     const args = JSON.parse(raw || "{}");
-    const value = args.path ?? args.query ?? args.expression;
+    const value = args.path ?? args.query ?? args.expression ?? args.command;
     return typeof value === "string" ? value : "";
   } catch {
     return raw.slice(0, 60);
   }
 }
+
+/** A terminal command as the user will see it in a shell. */
+const CommandView: React.FC<{ text: string }> = ({ text }) => (
+  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-canvas/90 border border-line/60 p-3 font-mono text-xs leading-snug text-fg">
+    {text}
+  </pre>
+);
 
 /** Unified diff with added lines green and removed lines red. */
 const DiffView: React.FC<{ diff: string }> = ({ diff }) => (
@@ -77,6 +85,7 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
     {steps.map((s) => {
       const summary = argumentSummary(s.arguments);
       const isChange = CHANGE_TOOLS.has(s.name);
+      const isCommand = s.name === COMMAND_TOOL;
       const change = changes?.[s.call_id];
 
       if (s.status === "awaiting") {
@@ -91,14 +100,19 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
                 Action Required
               </span>
             </div>
-            {s.diff && <DiffView diff={s.diff} />}
+            {s.diff && (isCommand ? <CommandView text={s.diff} /> : <DiffView diff={s.diff} />)}
+            {isCommand && (
+              <p className="text-xs text-warning">
+                This runs on your computer with your own permissions. Read the command before you allow it.
+              </p>
+            )}
             <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => onApprove?.(s.call_id, true)}
                 className="h-7 px-3.5 rounded-xl btn-violet text-white text-xs font-medium hover:brightness-110 transition-all"
               >
-                Approve change
+                {isCommand ? "Run command" : "Approve change"}
               </button>
               <button
                 type="button"
@@ -107,15 +121,19 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
               >
                 Deny
               </button>
-              <button
-                type="button"
-                onClick={() => onApprove?.(s.call_id, true, true)}
-                className="h-7 px-3.5 rounded-xl border border-line/70 hover:bg-raised/80 text-fg text-xs font-medium transition-all"
-                title="Approve this and every later change in this chat without asking. You can still undo each one."
-              >
-                Approve all in this chat
-              </button>
-              <span className="text-xs text-subtle ml-1">Nothing is written unless you approve.</span>
+              {!isCommand && (
+                <button
+                  type="button"
+                  onClick={() => onApprove?.(s.call_id, true, true)}
+                  className="h-7 px-3.5 rounded-xl border border-line/70 hover:bg-raised/80 text-fg text-xs font-medium transition-all"
+                  title="Approve this and every later change in this chat without asking. You can still undo each one."
+                >
+                  Approve all in this chat
+                </button>
+              )}
+              <span className="text-xs text-subtle ml-1">
+                {isCommand ? "Nothing runs unless you approve." : "Nothing is written unless you approve."}
+              </span>
             </div>
           </div>
         );
@@ -130,7 +148,7 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
               <StatusIcon status={s.status} />
               <span className="font-medium">
                 {TOOL_LABELS[s.name] ?? s.name}
-                {isChange && s.status === "denied" ? " (denied)" : ""}
+                {(isChange || isCommand) && s.status === "denied" ? " (denied)" : ""}
                 {change?.undone ? " (undone)" : ""}
               </span>
               {summary && <code className="font-mono text-xs text-muted truncate">{summary}</code>}
@@ -154,7 +172,7 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
               <div>
                 <span className="text-subtle">Tool: </span>
                 <code className="font-mono text-accent">{s.name}</code>
-                {(!isChange || !s.diff) && (
+                {(!(isChange || isCommand) || !s.diff) && (
                   <>
                     <span className="text-subtle"> with </span>
                     <code className="font-mono text-muted break-all">{s.arguments || "{}"}</code>
@@ -162,6 +180,7 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
                 )}
               </div>
               {isChange && s.diff && <DiffView diff={s.diff} />}
+              {isCommand && s.diff && <CommandView text={s.diff} />}
               {s.result !== undefined && (
                 <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-canvas/90 border border-line/60 p-2.5 font-mono text-xs text-muted">
                   {s.result}
