@@ -159,11 +159,117 @@ def _resolve(ctx: ToolContext, path: str) -> Path:
         raise ToolError(str(e))
 
 
-def _list_files(path: str, ctx: ToolContext) -> str:
+# Folders full of dependencies, caches and build output: skipped when walking a whole project.
+SKIP_DIRS = {"node_modules", "__pycache__", "venv", "env", "target", "dist", ".git", ".venv"}
+MAX_FIND_RESULTS = 200
+MAX_WALK_ENTRIES = 20_000
+MAX_TREE_DEPTH = 4
+SEARCH_SECONDS = 15.0
+
+
+def _glob_regex(pattern: str):
+    """A file glob as a case-insensitive regex: * and ? stay inside one folder name, ** crosses folders.
+    A pattern without a slash is matched against file names anywhere ("*.py" finds src/app/main.py)."""
+    pattern = pattern.strip().replace("\\", "/").lstrip("./") or "*"
+    has_slash = "/" in pattern
+    out, i = [], 0
+    while i < len(pattern):
+        c = pattern[i]
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+            continue
+        if pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+            continue
+        out.append("[^/]*" if c == "*" else "[^/]" if c == "?" else re.escape(c))
+        i += 1
+    return re.compile("".join(out) + r"\Z", re.IGNORECASE), has_slash
+
+
+def _walk(ws, start: Path):
+    """Yield (path, relative path with forward slashes) for every followable file under `start`, skipping
+    hidden folders and SKIP_DIRS."""
+    count = 0
+    for dirpath, dirnames, filenames in os.walk(start, followlinks=False):
+        here = Path(dirpath)
+        dirnames[:] = sorted(d for d in dirnames
+                             if not d.startswith(".") and d.lower() not in SKIP_DIRS and ws.is_followable(here / d))
+        for name in sorted(filenames):
+            count += 1
+            if count > MAX_WALK_ENTRIES:
+                return
+            p = here / name
+            if ws.is_followable(p):
+                yield p, ws.relative(p).replace("\\", "/")
+
+
+def _find_files(pattern: str, path: str, ctx: ToolContext) -> str:
+    ws = _workspace(ctx)
+    start = _resolve(ctx, path)
+    if not start.is_dir():
+        raise ToolError(f"Not a folder: {path!r}.")
+    rx, has_slash = _glob_regex(pattern)
+    found = []
+    for p, rel in _walk(ws, start):
+        if rx.match(rel if has_slash else p.name):
+            found.append((rel, p))
+            if len(found) >= MAX_FIND_RESULTS:
+                break
+    if not found:
+        return f"No files match {pattern!r} (skipped folders: {', '.join(sorted(SKIP_DIRS - {'.git', '.venv'}))} and hidden ones)."
+    lines = []
+    for rel, p in found:
+        try:
+            lines.append(f"{rel}  ({_size(p.stat().st_size)})")
+        except OSError:
+            lines.append(rel)
+    more = f"\n[Stopped at {MAX_FIND_RESULTS} files; narrow the pattern or the folder.]" if len(found) >= MAX_FIND_RESULTS else ""
+    return f"{len(found)} file{'s' if len(found) != 1 else ''} match {pattern!r}:\n" + "\n".join(lines) + more
+
+
+def _list_tree(ws, root: Path, depth: int) -> str:
+    """A folder tree, `depth` levels deep, folders first, capped at MAX_LIST_ENTRIES lines."""
+    lines: list[str] = []
+    total = 0
+
+    def walk(folder: Path, level: int) -> None:
+        nonlocal total
+        entries = []
+        with os.scandir(folder) as it:
+            for e in it:
+                p = Path(e.path)
+                if not ws.is_followable(p):
+                    continue
+                is_dir = e.is_dir(follow_symlinks=False)
+                if is_dir and e.name.lower() in SKIP_DIRS:
+                    continue
+                entries.append((0 if is_dir else 1, e.name.lower(), e.name, p, is_dir))
+        entries.sort()
+        for _, _, name, p, is_dir in entries:
+            total += 1
+            if len(lines) < MAX_LIST_ENTRIES:
+                indent = "  " * (level - 1)
+                lines.append(f"{indent}{name}\\  (folder)" if is_dir else f"{indent}{name}  ({_size(p.stat(follow_symlinks=False).st_size)})")
+            if is_dir and level < depth and not name.startswith("."):  # hidden folders are listed, not opened
+                walk(p, level + 1)
+
+    walk(root, 1)
+    header = f"Contents of {ws.relative(root)}, {depth} level{'s' if depth != 1 else ''} deep ({total} item{'s' if total != 1 else ''}):"
+    if not lines:
+        return header + "\n(empty)"
+    more = f"\n... and {total - len(lines)} more" if total > len(lines) else ""
+    return header + "\n" + "\n".join(lines) + more
+
+
+def _list_files(path: str, ctx: ToolContext, depth: int = 1) -> str:
     ws = _workspace(ctx)
     target = _resolve(ctx, path)
     if not target.is_dir():
         raise ToolError(f"Not a folder: {path!r}. Use read_file for files.")
+    if depth > 1:
+        return _list_tree(ws, target, min(depth, MAX_TREE_DEPTH))
     entries = []
     with os.scandir(target) as it:
         for e in it:
@@ -234,40 +340,57 @@ def _read_file(path: str, ctx: ToolContext, start_line: int | None = None, end_l
     return f"{body}\n\n[Lines {first}-{shown_last} of {of} ({_size(size)}).{tail}]"
 
 
-def _search_text(query: str, path: str, ctx: ToolContext) -> str:
+def _search_text(query: str, path: str, ctx: ToolContext, file_pattern: str | None = None, use_regex: bool = False) -> str:
+    """Search the text files under `path` for a phrase (or a regular expression), optionally only in files whose
+    name matches a glob. Case-insensitive. Stops at MAX_SEARCH_MATCHES matches or SEARCH_SECONDS."""
+    import time
+
     ws = _workspace(ctx)
     start = _resolve(ctx, path)
     if not start.is_dir():
         raise ToolError(f"Not a folder: {path!r}.")
-    needle = query.lower()
-    matches, scanned = [], 0
-    for dirpath, dirnames, filenames in os.walk(start, followlinks=False):
-        here = Path(dirpath)
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith(".") and ws.is_followable(here / d))
-        for name in sorted(filenames):
-            p = here / name
-            if scanned >= MAX_SEARCH_FILES or len(matches) >= MAX_SEARCH_MATCHES:
-                break
-            if not ws.is_followable(p):
+    if use_regex:
+        try:
+            pattern = re.compile(query, re.IGNORECASE)
+        except re.error as e:
+            raise ToolError(f"Not a valid regular expression: {e}")
+        hit = lambda line: pattern.search(line) is not None  # noqa: E731
+    else:
+        needle = query.lower()
+        hit = lambda line: needle in line.lower()  # noqa: E731
+    name_rx, name_has_slash = _glob_regex(file_pattern) if file_pattern else (None, False)
+    deadline = time.monotonic() + SEARCH_SECONDS
+    matches, scanned, timed_out = [], 0, False
+    for p, rel in _walk(ws, start):
+        if scanned >= MAX_SEARCH_FILES or len(matches) >= MAX_SEARCH_MATCHES:
+            break
+        if time.monotonic() > deadline:
+            timed_out = True
+            break
+        if name_rx is not None and not name_rx.match(rel if name_has_slash else p.name):
+            continue
+        try:
+            if p.stat().st_size > MAX_SEARCH_FILE_BYTES:
                 continue
-            try:
-                if p.stat().st_size > MAX_SEARCH_FILE_BYTES:
-                    continue
-                data = p.read_bytes()
-            except OSError:
-                continue
-            scanned += 1
-            if _looks_binary(data[:8192]):
-                continue
-            for n, line in enumerate(_decode(data).splitlines(), 1):
-                if needle in line.lower():
-                    matches.append(f"{ws.relative(p)}:{n}: {line.strip()[:200]}")
-                    if len(matches) >= MAX_SEARCH_MATCHES:
-                        break
+            data = p.read_bytes()
+        except OSError:
+            continue
+        scanned += 1
+        if _looks_binary(data[:8192]):
+            continue
+        for n, line in enumerate(_decode(data).splitlines(), 1):
+            if len(line) <= 4000 and hit(line):
+                matches.append(f"{rel}:{n}: {line.strip()[:200]}")
+                if len(matches) >= MAX_SEARCH_MATCHES:
+                    break
+    note = ""
+    if len(matches) >= MAX_SEARCH_MATCHES:
+        note = f"\n[Stopped at {MAX_SEARCH_MATCHES} matches; narrow the search with path or file_pattern.]"
+    elif timed_out:
+        note = f"\n[Stopped after {SEARCH_SECONDS:.0f} s; narrow the search with path or file_pattern.]"
     if not matches:
-        return f"No matches for {query!r} ({scanned} text file{'s' if scanned != 1 else ''} searched)."
-    more = f"\n[Stopped at {MAX_SEARCH_MATCHES} matches.]" if len(matches) >= MAX_SEARCH_MATCHES else ""
-    return f"{len(matches)} match{'es' if len(matches) != 1 else ''} for {query!r}:\n" + "\n".join(matches) + more
+        return f"No matches for {query!r} ({scanned} text file{'s' if scanned != 1 else ''} searched).{note}"
+    return f"{len(matches)} match{'es' if len(matches) != 1 else ''} for {query!r}:\n" + "\n".join(matches) + note
 
 
 async def _in_thread(fn, *args):
@@ -276,9 +399,13 @@ async def _in_thread(fn, *args):
 
 register(ToolSpec(
     name="list_files",
-    description="List the files and folders in a folder of the user's workspace.",
-    parameters=_obj({"path": {"type": "string", "description": "Folder relative to the workspace; '.' for the top"}}, ["path"]),
-    handler=lambda a, c: _in_thread(_list_files, a["path"], c),
+    description=("List the files and folders in a folder of the user's workspace. Use depth 2-4 to see a project's "
+                 "structure in one call."),
+    parameters=_obj({
+        "path": {"type": "string", "description": "Folder relative to the workspace; '.' for the top"},
+        "depth": {"type": "integer", "description": "Levels to show (default 1, at most 4)", "minimum": 1, "maximum": 4},
+    }, ["path"]),
+    handler=lambda a, c: _in_thread(_list_files, a["path"], c, a.get("depth") or 1),
     needs_workspace=True,
 ))
 
@@ -298,12 +425,29 @@ register(ToolSpec(
 
 register(ToolSpec(
     name="search_files",
-    description="Search the text files in the user's workspace for a word or phrase (case-insensitive).",
+    description=("Search the text inside the files of the user's workspace for a word, phrase or regular expression "
+                 "(case-insensitive). Returns file:line: text. Use file_pattern to look only in some files, e.g. *.cpp."),
     parameters=_obj({
         "query": {"type": "string", "description": "Text to look for"},
         "path": {"type": "string", "description": "Folder to search, relative to the workspace; '.' for all"},
+        "file_pattern": {"type": "string", "description": "Only files whose name matches, e.g. *.py or src/**/*.h"},
+        "regex": {"type": "boolean", "description": "Treat query as a regular expression (default false)"},
     }, ["query"]),
-    handler=lambda a, c: _in_thread(_search_text, a["query"], a.get("path", "."), c),
+    handler=lambda a, c: _in_thread(_search_text, a["query"], a.get("path", "."), c, a.get("file_pattern"), bool(a.get("regex"))),
+    needs_workspace=True,
+    timeout_s=25.0,
+    max_string=200,
+))
+
+register(ToolSpec(
+    name="find_files",
+    description=("Find files by NAME anywhere in the workspace with a glob pattern, e.g. *.py, Config*.h or "
+                 "src/**/test_*.cpp (case-insensitive; ** crosses folders). To look inside files use search_files."),
+    parameters=_obj({
+        "pattern": {"type": "string", "description": "Glob pattern for the file name or path"},
+        "path": {"type": "string", "description": "Folder to search in, relative to the workspace; '.' for all"},
+    }, ["pattern"]),
+    handler=lambda a, c: _in_thread(_find_files, a["pattern"], a.get("path", "."), c),
     needs_workspace=True,
     timeout_s=20.0,
     max_string=200,

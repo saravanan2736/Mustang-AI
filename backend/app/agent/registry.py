@@ -22,6 +22,7 @@ class ToolContext:
     conversation_id: str | None = None
     terminal: bool = False  # the user turned Terminal on for this chat (run_command is offered)
     read_chars: int = 8_000  # most characters one read_file call returns (smaller for a small context window)
+    tasks: list = field(default_factory=list)  # the agent's task list for this chat (see app.agent.tasks)
 
 
 @dataclass
@@ -54,7 +55,35 @@ class ToolSpec:
         return Tool(function=ToolFunction(name=self.name, description=self.description, parameters=self.parameters))
 
 
-_TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool}
+_TYPES = {"string": str, "integer": int, "number": (int, float), "boolean": bool, "array": list, "object": dict}
+
+
+def _check_value(schema: dict, value: Any, label: str, max_string: int) -> None:
+    """Check one value against a small JSON-schema subset: type, enum, string length, and for arrays
+    maxItems and the items' schema; for objects the properties, required and no unknown keys."""
+    want = schema.get("type")
+    py = _TYPES.get(want)
+    if py is not None and (not isinstance(value, py) or (want in ("integer", "number") and isinstance(value, bool))):
+        raise ToolError(f"'{label}' must be a {want}.")
+    if "enum" in schema and value not in schema["enum"]:
+        raise ToolError(f"'{label}' must be one of: {', '.join(map(str, schema['enum']))}.")
+    if isinstance(value, str) and len(value) > max_string:
+        raise ToolError(f"'{label}' is too long (max {max_string} characters).")
+    if want == "array":
+        if len(value) > schema.get("maxItems", 1000):
+            raise ToolError(f"'{label}' has too many items (max {schema.get('maxItems', 1000)}).")
+        for i, item in enumerate(value):
+            _check_value(schema.get("items", {}), item, f"{label}[{i + 1}]", max_string)
+    if want == "object":
+        props = schema.get("properties", {})
+        unknown = sorted(set(value) - set(props))
+        if unknown:
+            raise ToolError(f"Unknown field(s) in '{label}': {', '.join(unknown)}. Allowed: {', '.join(props) or 'none'}.")
+        for name in schema.get("required", []):
+            if name not in value:
+                raise ToolError(f"'{label}' is missing '{name}'.")
+        for name, sub in value.items():
+            _check_value(props[name], sub, f"{label}.{name}", max_string)
 
 
 def validate_arguments(spec: ToolSpec, raw: str) -> dict[str, Any]:
@@ -79,6 +108,9 @@ def validate_arguments(spec: ToolSpec, raw: str) -> dict[str, Any]:
         want = props[name].get("type")
         py = _TYPES.get(want)
         if py is None:
+            continue
+        if want in ("array", "object"):
+            _check_value(props[name], value, name, spec.max_string)
             continue
         # bool is an int subclass in Python; don't accept true/false for numbers.
         if not isinstance(value, py) or (want in ("integer", "number") and isinstance(value, bool)):
@@ -105,7 +137,7 @@ def register(spec: ToolSpec) -> ToolSpec:
 
 def available_tools(ctx: ToolContext) -> list[ToolSpec]:
     """Tools offered for this context: file tools only when a workspace is open."""
-    from app.agent import terminal, tools  # noqa: F401  (registers the built-in tools)
+    from app.agent import tasks, terminal, tools  # noqa: F401  (registers the built-in tools)
 
     return [t for t in _REGISTRY.values()
             if (ctx.workspace is not None or not t.needs_workspace) and (ctx.terminal or not t.needs_terminal)]

@@ -40,6 +40,14 @@ class UpdateConversationRequest(BaseModel):
     workspace: str | None = Field(default=None, max_length=1024)  # "" clears it
 
 
+def _stored_tasks(raw: str | None) -> list[dict]:
+    try:
+        data = json.loads(raw) if raw else []
+        return [t for t in data if isinstance(t, dict) and t.get("text")]
+    except (ValueError, TypeError):
+        return []
+
+
 def _checked_workspace(folder: str | None) -> str | None:
     """A workspace folder as stored: validated like the agent will use it, or None."""
     if not folder:
@@ -108,6 +116,7 @@ class ConversationDetail(BaseModel):
     agent_enabled: bool = False
     workspace: str | None = None
     terminal_enabled: bool = False
+    tasks: list[dict] = Field(default_factory=list)  # the agent's task list (update_tasks)
 
 
 # --- Endpoints ---
@@ -232,6 +241,7 @@ async def get_conversation(conversation_id: str):
             agent_enabled=bool(conv["agent_enabled"]),
             workspace=conv["workspace"],
             terminal_enabled=bool(conv["terminal_enabled"]),
+            tasks=_stored_tasks(conv["tasks"]),
         )
     finally:
         await db.close()

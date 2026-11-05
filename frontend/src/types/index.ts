@@ -102,6 +102,12 @@ export interface AgentStep {
   auto?: boolean;
 }
 
+/** One item of the agent's task list (update_tasks). */
+export interface TaskItem {
+  text: string;
+  status: "pending" | "in_progress" | "done";
+}
+
 /** A file change agent mode made, as the backend's change journal reports it. */
 export interface AgentChange {
   call_id: string;
@@ -154,6 +160,7 @@ export interface ConversationDetail {
   messages: ChatMessage[];
   agent_enabled?: boolean;
   terminal_enabled?: boolean;
+  tasks?: TaskItem[];
   workspace?: string | null;
 }
 

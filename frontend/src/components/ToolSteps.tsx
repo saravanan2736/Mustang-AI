@@ -1,7 +1,7 @@
 import React from "react";
 import { Ban, CheckCircle2, ChevronRight, FilePen, Loader2, RotateCcw, XCircle } from "lucide-react";
 import { AgentChange, AgentStep } from "../types";
-import { CHANGE_TOOLS, COMMAND_TOOL, STOP_REASON_TEXT } from "../services/agent";
+import { CHANGE_TOOLS, COMMAND_TOOL, STOP_REASON_TEXT, TASKS_TOOL } from "../services/agent";
 
 const TOOL_LABELS: Record<string, string> = {
   get_current_time: "Checked the time",
@@ -9,6 +9,7 @@ const TOOL_LABELS: Record<string, string> = {
   list_files: "Listed files",
   read_file: "Read file",
   search_files: "Searched files",
+  find_files: "Found files",
   search_history: "Searched this chat",
   create_file: "Create file",
   edit_file: "Edit file",
@@ -19,7 +20,7 @@ const TOOL_LABELS: Record<string, string> = {
 function argumentSummary(raw: string): string {
   try {
     const args = JSON.parse(raw || "{}");
-    const value = args.path ?? args.query ?? args.expression ?? args.command;
+    const value = args.path ?? args.pattern ?? args.query ?? args.expression ?? args.command;
     return typeof value === "string" ? value : "";
   } catch {
     return raw.slice(0, 60);
@@ -80,7 +81,10 @@ const StatusIcon: React.FC<{ status: AgentStep["status"] }> = ({ status }) =>
   );
 
 /** Tool steps of an agent-mode reply, one collapsible card per call. */
-export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes, onApprove, onUndo, onContinue }) => (
+export const ToolSteps: React.FC<ToolStepsProps> = ({ steps: allSteps, stopReason, changes, onApprove, onUndo, onContinue }) => {
+  const steps = allSteps.filter((s) => s.name !== TASKS_TOOL); // the task list has its own panel
+  if (!steps.length && !(stopReason && STOP_REASON_TEXT[stopReason])) return null;
+  return (
   <div className="space-y-2 mb-3.5 not-prose">
     {steps.map((s) => {
       const summary = argumentSummary(s.arguments);
@@ -206,4 +210,5 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
       </div>
     )}
   </div>
-);
+  );
+};

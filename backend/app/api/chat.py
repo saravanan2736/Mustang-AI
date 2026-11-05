@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.agent.changes import ChangeError, list_changes, undo_change
 from app.agent.loop import DEFAULT_MAX_STEPS, cancel_all as cancel_agent_loops, resolve_approval, run_agent
 from app.agent.registry import ToolContext
+from app.agent.tasks import load_tasks
 from app.agent.tools import read_limit_for_context
 from app.agent.workspace import Workspace, WorkspaceError
 from app.api.models import get_engine
@@ -322,6 +323,7 @@ async def chat_completions(
     agent_ctx = _agent_context(chat_req.agent, conv_id) if chat_req.agent else None
     if agent_ctx is not None:
         agent_ctx.read_chars = read_limit_for_context(status_obj.context_size)
+        agent_ctx.tasks = await load_tasks(conv_id)
 
     # Ensure conversation exists and store user turn if needed
     db = await get_db()
@@ -481,6 +483,7 @@ async def regenerate_response(
         chat_req.model = model_name
         agent_ctx = _agent_context(regen_req.agent, conv_id)
         agent_ctx.read_chars = read_limit_for_context(status_obj.context_size)
+        agent_ctx.tasks = await load_tasks(conv_id)
         return await _stream_agent_response(engine, chat_req, agent_ctx, regen_req.agent, conv_id, request)
     return await _stream_chat_response(engine, chat_req, conv_id, request, model_name)
 

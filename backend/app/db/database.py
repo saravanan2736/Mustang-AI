@@ -239,7 +239,7 @@ async def init_db():
             except Exception:
                 pass
         # ...and per-conversation agent mode with its workspace folder (M5 Phase D).
-        for col_def in ["agent_enabled INTEGER DEFAULT 0", "workspace TEXT", "terminal_enabled INTEGER DEFAULT 0"]:
+        for col_def in ["agent_enabled INTEGER DEFAULT 0", "workspace TEXT", "terminal_enabled INTEGER DEFAULT 0", "tasks TEXT"]:
             try:
                 await db.execute(f"ALTER TABLE conversations ADD COLUMN {col_def};")
                 await db.commit()

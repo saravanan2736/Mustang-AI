@@ -3,7 +3,7 @@
  * tool steps shown on the assistant message, and keeping tool turns out of the history the
  * UI sends (the backend accepts text turns only; it runs the tools itself).
  */
-import { AgentStep, ChatMessage } from "../types";
+import { AgentStep, ChatMessage, TaskItem } from "../types";
 
 export interface AgentEvent {
   event: "tool_call" | "approval_required" | "tool_result" | "done";
@@ -26,6 +26,34 @@ export const CHANGE_TOOLS = new Set(["create_file", "edit_file"]);
 export const AGENT_MIN_CONTEXT = 8192;
 /** The context the "Reload" button asks for. */
 export const AGENT_CONTEXT = 16384;
+
+/** The agent's task list tool: its calls are shown as the task panel, not as steps in the reply. */
+export const TASKS_TOOL = "update_tasks";
+
+/** A task list from a tool call's JSON arguments (null if it isn't one). */
+export function parseTasks(raw: string): TaskItem[] | null {
+  try {
+    const list = JSON.parse(raw || "{}").tasks;
+    if (!Array.isArray(list)) return null;
+    return list
+      .filter((t) => t && typeof t.text === "string" && t.text.trim())
+      .map((t) => ({ text: String(t.text), status: t.status === "done" || t.status === "in_progress" ? t.status : "pending" }));
+  } catch {
+    return null;
+  }
+}
+
+/** The newest task list the agent wrote in these messages (null if it never wrote one). */
+export function tasksFromMessages(messages: ChatMessage[]): TaskItem[] | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const steps = messages[i].steps;
+    if (!steps) continue;
+    for (let j = steps.length - 1; j >= 0; j--) {
+      if (steps[j].name === TASKS_TOOL && steps[j].status !== "error") return parseTasks(steps[j].arguments);
+    }
+  }
+  return null;
+}
 
 /** The terminal tool: the exact command is shown and every run needs approval ("approve all" never covers it). */
 export const COMMAND_TOOL = "run_command";

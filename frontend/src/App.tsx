@@ -8,7 +8,8 @@ import { PromptInput } from "./components/PromptInput";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { SettingsModal } from "./components/SettingsModal";
 import { AgentBar } from "./components/AgentBar";
-import { AGENT_CONTEXT, groupAgentMessages } from "./services/agent";
+import { TaskPanel } from "./components/TaskPanel";
+import { AGENT_CONTEXT, groupAgentMessages, tasksFromMessages } from "./services/agent";
 import { isDesktop } from "./services/connection";
 import { chooseWorkspaceFolder } from "./services/desktop";
 import { useHardware } from "./hooks/useHardware";
@@ -30,6 +31,7 @@ import {
 } from "./services/api";
 import {
   AgentChange,
+  TaskItem,
   AppSettings,
   AssistantProfile,
   ConversationSummary,
@@ -53,6 +55,7 @@ export default function App() {
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [savedTasks, setSavedTasks] = useState<TaskItem[]>([]); // the agent's task list as stored with the chat
   // Chats where the user chose "Approve all" (kept for this session only, never saved).
   const [autoApproveChats, setAutoApproveChats] = useState<Record<string, boolean>>({});
   const agentOptions = agentEnabled ? { workspace, terminal: terminalEnabled && Boolean(workspace), autoApprove: Boolean(activeConversationId && autoApproveChats[activeConversationId]) } : null;
@@ -165,6 +168,7 @@ export default function App() {
       setAgentEnabled(Boolean(detail.agent_enabled));
       setWorkspace(detail.workspace ?? null);
       setTerminalEnabled(Boolean(detail.terminal_enabled));
+      setSavedTasks(detail.tasks ?? []);
       // If conversation has a custom profile or system prompt, match profile
       if (detail.profile_id) {
         const matchingProfile = profiles.find((p) => p.id === detail.profile_id);
@@ -191,6 +195,7 @@ export default function App() {
       setAgentEnabled(false);
       setWorkspace(null);
       setTerminalEnabled(false);
+      setSavedTasks([]);
     } catch (err) {
       console.error("Failed to create new conversation:", err);
     }
@@ -338,6 +343,9 @@ export default function App() {
     );
   };
 
+  // The newest task list the agent wrote in this chat (live while it streams), else the stored one.
+  const tasks = tasksFromMessages(messages) ?? savedTasks;
+
   const activeError = errorMessage || streamError || engineStatus?.error_message || null;
   const isReady = engineStatus?.state === "READY";
 
@@ -430,7 +438,10 @@ export default function App() {
             )}
             {/* One prompt box for the whole session, so sending the first message doesn't rebuild it. */}
             <div className="shrink-0 px-6 pb-5 pt-2">
-              <div className="max-w-3xl mx-auto">{composer}</div>
+              <div className="max-w-3xl mx-auto">
+                {agentEnabled && <TaskPanel tasks={tasks} working={isGenerating} />}
+                {composer}
+              </div>
             </div>
           </main>
         </div>
