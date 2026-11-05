@@ -214,3 +214,21 @@ async def test_after_a_denial_a_tag_only_last_turn_becomes_a_plain_acknowledgeme
     events = await _run(engine, ctx, lambda cid: loop.resolve_approval(cid, False))
     shown = "".join(e.text for e in events if e.kind == "content")
     assert shown.strip() == loop.NO_ANSWER_AFTER_DENIAL and "<tool_call>" not in shown
+
+
+# --- step limit --------------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_a_twelve_file_project_made_one_call_per_turn_fits_the_default_step_limit(scripted_engine, ctx):
+    files = [("create_file", json.dumps({"path": f"src/f{i}.txt", "content": str(i)})) for i in range(12)]
+    engine = scripted_engine([{"calls": [f]} for f in files] + [{"text": "All twelve files are made."}])
+    events = await _run(engine, ctx, auto_approve=True)
+    assert events[-1].reason is None, "no step_limit"
+    assert all((ctx.workspace.root / "src" / f"f{i}.txt").exists() for i in range(12))
+
+
+def test_the_step_limit_option_allows_long_projects():
+    from app.api.chat import AgentOptions
+
+    assert loop.DEFAULT_MAX_STEPS >= 20 and AgentOptions().max_steps == loop.DEFAULT_MAX_STEPS
+    assert AgentOptions(max_steps=60).max_steps == 60

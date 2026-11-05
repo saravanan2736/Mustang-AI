@@ -29,7 +29,9 @@ from app.core.engine_base import ChatCompletionRequest, ChatMessage, InferenceEn
 
 logger = logging.getLogger("mustang.agent")
 
-DEFAULT_MAX_STEPS = 8
+# One step = one model turn with tool calls. A model that makes one call per turn needs a step per file,
+# so a small project needs well over 8. The repeat and error limits still stop a loop that goes nowhere.
+DEFAULT_MAX_STEPS = 24
 MAX_RESULT_CHARS = 24_000
 APPROVAL_TIMEOUT_S = 600.0
 # Room for one step: a whole file as a tool argument, or thinking plus a call. The UI default (2048)

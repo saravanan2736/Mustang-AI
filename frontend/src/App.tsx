@@ -401,6 +401,7 @@ export default function App() {
                 agentChanges={agentChanges}
                 onApproveChange={handleApproveChange}
                 onUndoChange={handleUndoChange}
+                onContinue={() => handleSendPrompt("Continue where you left off.")}
               />
             )}
             {/* One prompt box for the whole session, so sending the first message doesn't rebuild it. */}

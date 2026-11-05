@@ -42,7 +42,7 @@ router = APIRouter(prefix="/api/chat", tags=["chat"])
 class AgentOptions(BaseModel):
     """Agent mode for one reply: the model may call the built-in read-only tools."""
     workspace: str | None = Field(default=None, max_length=1024)  # folder the file tools may read
-    max_steps: int = Field(default=DEFAULT_MAX_STEPS, ge=1, le=16)
+    max_steps: int = Field(default=DEFAULT_MAX_STEPS, ge=1, le=60)
     auto_approve: bool = False  # the user chose "approve all changes in this chat" (the UI keeps it per chat)
 
 

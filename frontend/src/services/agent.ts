@@ -146,7 +146,7 @@ export function modelSizeB(name: string | null | undefined): number | null {
 export const SMALL_AGENT_MODEL_B = 3;
 
 export const STOP_REASON_TEXT: Record<string, string> = {
-  step_limit: "Stopped after the maximum number of tool steps.",
+  step_limit: "Paused after the maximum number of tool steps for one reply. Press Continue to carry on.",
   repeated_calls: "Stopped: the model kept repeating the same tool call.",
   tool_errors: "Stopped: the tool calls kept failing.",
   stopped: "Stopped before the answer was finished.",

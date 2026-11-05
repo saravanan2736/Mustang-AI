@@ -54,6 +54,8 @@ interface ToolStepsProps {
   changes?: Record<string, AgentChange>;
   onApprove?: (callId: string, approved: boolean, approveAll?: boolean) => void;
   onUndo?: (callId: string) => void;
+  /** Offered when the reply paused at the step limit (only on the latest reply). */
+  onContinue?: () => void;
 }
 
 const StatusIcon: React.FC<{ status: AgentStep["status"] }> = ({ status }) =>
@@ -70,7 +72,7 @@ const StatusIcon: React.FC<{ status: AgentStep["status"] }> = ({ status }) =>
   );
 
 /** Tool steps of an agent-mode reply, one collapsible card per call. */
-export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes, onApprove, onUndo }) => (
+export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes, onApprove, onUndo, onContinue }) => (
   <div className="space-y-2 mb-3.5 not-prose">
     {steps.map((s) => {
       const summary = argumentSummary(s.arguments);
@@ -171,7 +173,18 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
       );
     })}
     {stopReason && STOP_REASON_TEXT[stopReason] && (
-      <p className="text-xs text-warning">{STOP_REASON_TEXT[stopReason]}</p>
+      <div className="flex items-center gap-2.5">
+        <p className="text-xs text-warning">{STOP_REASON_TEXT[stopReason]}</p>
+        {stopReason === "step_limit" && onContinue && (
+          <button
+            type="button"
+            onClick={onContinue}
+            className="h-6 px-3 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors"
+          >
+            Continue
+          </button>
+        )}
+      </div>
     )}
   </div>
 );

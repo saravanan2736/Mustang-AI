@@ -18,6 +18,7 @@ interface ChatInterfaceProps {
   agentChanges?: Record<string, AgentChange>;
   onApproveChange?: (callId: string, approved: boolean, approveAll?: boolean) => void;
   onUndoChange?: (callId: string) => void;
+  onContinue?: () => void;
 }
 
 /** How close to the bottom (px) still counts as "following" the reply. */
@@ -150,6 +151,7 @@ interface AssistantMessageProps {
   onApprove: (callId: string, approved: boolean, approveAll?: boolean) => void;
   onUndo: (callId: string) => void;
   onRegenerate: () => void;
+  onContinue: () => void;
 }
 
 const AssistantMessage = memo(function AssistantMessage({
@@ -160,6 +162,7 @@ const AssistantMessage = memo(function AssistantMessage({
   onApprove,
   onUndo,
   onRegenerate,
+  onContinue,
 }: AssistantMessageProps) {
   const { copied, copy } = useCopy();
   const toolRunning = msg.steps?.some((s) => s.status === "running" || s.status === "awaiting");
@@ -168,7 +171,14 @@ const AssistantMessage = memo(function AssistantMessage({
   return (
     <div className="group">
       {msg.steps?.length ? (
-        <ToolSteps steps={msg.steps} stopReason={msg.agent_stop_reason} changes={changes} onApprove={onApprove} onUndo={onUndo} />
+        <ToolSteps
+          steps={msg.steps}
+          stopReason={msg.agent_stop_reason}
+          changes={changes}
+          onApprove={onApprove}
+          onUndo={onUndo}
+          onContinue={isLast && !streaming ? onContinue : undefined}
+        />
       ) : null}
       {msg.reasoning ? <Thinking text={stripEmoji(msg.reasoning)} waiting={streaming && !text && !toolRunning} /> : null}
       {!text && !msg.steps?.length && !msg.reasoning && (
@@ -211,6 +221,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   agentChanges,
   onApproveChange,
   onUndoChange,
+  onContinue,
 }) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -218,8 +229,9 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [showLatest, setShowLatest] = useState(false);
 
   // Callbacks stay the same function between renders, so memoised messages don't re-render per token.
-  const handlers = useRef({ onRegenerate, onEditMessage, onApproveChange, onUndoChange });
-  handlers.current = { onRegenerate, onEditMessage, onApproveChange, onUndoChange };
+  const handlers = useRef({ onRegenerate, onEditMessage, onApproveChange, onUndoChange, onContinue });
+  handlers.current = { onRegenerate, onEditMessage, onApproveChange, onUndoChange, onContinue };
+  const carryOn = useCallback(() => handlers.current.onContinue?.(), []);
   const regenerate = useCallback(() => handlers.current.onRegenerate?.(), []);
   const edit = useCallback((id: string, text: string) => handlers.current.onEditMessage?.(id, text), []);
   const approve = useCallback((id: string, ok: boolean, all?: boolean) => handlers.current.onApproveChange?.(id, ok, all), []);
@@ -297,6 +309,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 onApprove={approve}
                 onUndo={undo}
                 onRegenerate={regenerate}
+                onContinue={carryOn}
               />
             );
           })}
