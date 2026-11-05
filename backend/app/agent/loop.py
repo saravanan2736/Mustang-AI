@@ -60,8 +60,9 @@ NO_TERMINAL = "You cannot delete files or run programs."
 TERMINAL_ON = ("You also have run_command: it runs one Windows PowerShell command in the workspace after the user approves "
                "that exact command. Use it for builds, tests, git and scripts, not to read or write files. Run one small "
                "command at a time, read its output and exit code before the next, and don't claim success unless the "
-               "output shows it. Never run commands that change the system outside the workspace. You cannot delete "
-               "files with the file tools.")
+               "output shows it. Never run commands that change the system outside the workspace. Before running tests or "
+               "a build, check the README for the project's own command. If a command fails, read the error and "
+               "change something before you run it again. You cannot delete files with the file tools.")
 CHANGES_NONE = "The tools only read; you cannot change, delete or run anything."
 
 _active: set[asyncio.Event] = set()
@@ -163,10 +164,16 @@ async def _execute(call: ToolCall, ctx: ToolContext, seen: dict[str, _Seen], ver
     # the workspace, or after an error the model is trying to fix, running it again is legitimate.
     key = name + json.dumps(args, sort_keys=True)
     prev = seen.get(key)
-    if prev is not None and prev.version == version and not spec.needs_approval:
+    # (Terminal commands count too: the same command again with no change in between gives the same result,
+    # and every run needs the user's approval, so a loop of them is a loop of clicks.)
+    if prev is not None and prev.version == version and (not spec.needs_approval or name == terminal.COMMAND_TOOL):
         if prev.ok:
             prev.count += 1
             if prev.count == 2:
+                if name == "run_command":
+                    return False, ("Error: this exact command already ran in this folder and nothing in the workspace has "
+                                   "changed since, so it would give the same result; its output is above. Change a file, "
+                                   "try a different command or folder, or answer the user.")
                 return False, (f"Error: {name} was already called with these arguments and nothing has changed; "
                                "its result is above. Use that result, or answer the user.")
             if prev.count > 2:
@@ -312,7 +319,10 @@ async def run_agent(
                     if approved:
                         try:
                             ok, result = True, await result.apply(call.id)
-                            version += 1  # the workspace changed: earlier results are stale
+                            # The workspace changed, so earlier results are stale. A command that failed changed
+                            # nothing worth noting: running the same one again is a loop, not a retry.
+                            if call.function.name != terminal.COMMAND_TOOL or result.startswith("Exit code: 0"):
+                                version += 1
                         except ChangeError as e:
                             ok, result = False, f"Error: {e}"
                         except Exception:

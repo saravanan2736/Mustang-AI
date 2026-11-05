@@ -24,6 +24,7 @@ import subprocess
 from app.agent.registry import Proposal, ToolContext, ToolError, ToolSpec, register
 from app.agent.workspace import WorkspaceError
 
+COMMAND_TOOL = "run_command"
 MAX_COMMAND_CHARS = 4000
 DEFAULT_TIMEOUT_S = 60
 MAX_TIMEOUT_S = 300
@@ -95,8 +96,52 @@ def kill_all() -> int:
     return len(procs)
 
 
+def _split_chain(command: str) -> tuple[list[str], list[str]]:
+    """Split a command line on && and || that are not inside quotes. Returns (segments, operators)."""
+    parts, ops, buf = [], [], []
+    quote = None
+    i = 0
+    while i < len(command):
+        c = command[i]
+        if quote:
+            buf.append(c)
+            if c == "`" and quote == '"' and i + 1 < len(command):  # PowerShell escape inside double quotes
+                buf.append(command[i + 1])
+                i += 1
+            elif c == quote:
+                quote = None
+        elif c in ("'", '"'):
+            quote = c
+            buf.append(c)
+        elif command[i:i + 2] in ("&&", "||"):
+            parts.append("".join(buf))
+            ops.append(command[i:i + 2])
+            buf = []
+            i += 1
+        else:
+            buf.append(c)
+        i += 1
+    parts.append("".join(buf))
+    return parts, ops
+
+
+def powershell_form(command: str) -> str:
+    """Windows PowerShell 5.1 has no && or ||, and models write them all the time (bash habit): turn a chain
+    that uses only one of them into the PowerShell equivalent ("a && b" -> "a; if ($?) { b }", nested for
+    longer chains so a failure stops the rest). Anything else, including a mix of both, is left as written."""
+    parts, ops = _split_chain(command)
+    if not ops or len(set(ops)) != 1 or any(not p.strip() for p in parts):
+        return command
+    cond = "$?" if ops[0] == "&&" else "-not $?"
+    out = parts[-1].strip()
+    for seg in reversed(parts[:-1][1:]):
+        out = f"{seg.strip()}; if ({cond}) {{ {out} }}"
+    return f"{parts[0].strip()}; if ({cond}) {{ {out} }}"
+
+
 def _argv(command: str) -> list[str]:
     if os.name == "nt":
+        command = powershell_form(command)
         utf8 = "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $OutputEncoding=[Console]::OutputEncoding; "
         # `powershell -Command` turns any failure into exit code 1. Pass a program's own exit code through
         # (builds and tests report their result that way), on a new line so a trailing # comment can't hide it.
@@ -127,8 +172,11 @@ async def run_command(command: str, cwd, timeout_s: int = DEFAULT_TIMEOUT_S, env
         popen_kw["creationflags"] = _NO_WINDOW | _NEW_GROUP
     else:
         popen_kw["start_new_session"] = True
+    environment = clean_environment(env)
+    path_key = next((k for k in environment if k.upper() == "PATH"), "PATH")
+    environment[path_key] = environment.get(path_key, "") + os.pathsep + "."  # last: a real tool always wins over a file here
     proc = await asyncio.create_subprocess_exec(
-        *_argv(command), cwd=str(cwd), env=clean_environment(env),
+        *_argv(command), cwd=str(cwd), env=environment,
         stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT, **popen_kw,
     )
     _running.add(proc)
@@ -210,7 +258,10 @@ def _prepare_run(args: dict, ctx: ToolContext) -> Proposal:
         result = await run_command(command, folder, timeout_s)
         return result.text(timeout_s)
 
-    return Proposal(summary=summary, diff=f"$ {command}\n\n(folder: {folder}; stops after {timeout_s} s)", apply=apply, always_ask=True)
+    shown = f"$ {command}"
+    if os.name == "nt" and powershell_form(command) != command:
+        shown += f"\n\n(PowerShell has no && or ||; it will run as: {powershell_form(command)})"
+    return Proposal(summary=summary, diff=f"{shown}\n\n(folder: {folder}; stops after {timeout_s} s)", apply=apply, always_ask=True)
 
 
 async def _handler(args: dict, ctx: ToolContext) -> Proposal:
@@ -218,8 +269,10 @@ async def _handler(args: dict, ctx: ToolContext) -> Proposal:
 
 
 register(ToolSpec(
-    name="run_command",
-    description=("Run one Windows PowerShell command in the user's workspace folder and get its output and exit code. "
+    name=COMMAND_TOOL,
+    description=("Run one Windows PowerShell 5.1 command and get its output and exit code. It runs INSIDE `folder` "
+                 "(default: the workspace top), so paths in the command are relative to that folder. Chain with ; or "
+                 "&& (converted for you); programs in the current folder run by name (fizzbuzz.exe) or ./name. "
                  "The user sees the exact command and must approve every run. Use it for builds, tests, git and "
                  "scripts; use the file tools (not the shell) to read or write files. Keep commands short and "
                  "non-interactive. System-level commands are refused."),
