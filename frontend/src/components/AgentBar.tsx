@@ -7,6 +7,9 @@ interface AgentBarProps {
   workspace: string | null;
   modelName?: string | null;
   disabled?: boolean;
+  /** "Approve all changes" is on for this chat. */
+  autoApprove?: boolean;
+  onTurnOffAutoApprove?: () => void;
   onToggle: (enabled: boolean) => void;
   onChooseWorkspace: () => void;
   onClearWorkspace: () => void;
@@ -21,6 +24,8 @@ export const AgentBar: React.FC<AgentBarProps> = ({
   workspace,
   modelName,
   disabled,
+  autoApprove,
+  onTurnOffAutoApprove,
   onToggle,
   onChooseWorkspace,
   onClearWorkspace,
@@ -85,6 +90,18 @@ export const AgentBar: React.FC<AgentBarProps> = ({
             </button>
           )}
         </>
+      )}
+
+      {enabled && autoApprove && (
+        <button
+          type="button"
+          onClick={onTurnOffAutoApprove}
+          className={`${toolCls} bg-warning/10 border border-warning/30 text-warning`}
+          title="File changes in this chat are written without asking (each can be undone). Click to ask again."
+        >
+          Auto-approve on
+          <X className="w-3 h-3" />
+        </button>
       )}
 
       {smallModel && (

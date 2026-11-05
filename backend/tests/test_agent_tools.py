@@ -94,7 +94,7 @@ def test_read_file_limits(ws):
     root = ws.workspace.root
     (root / "big.txt").write_text("x" * 50_000, encoding="utf-8")
     out = tools._read_file("big.txt", ws)
-    assert len(out) < tools.MAX_READ_CHARS + 200 and "Showing the first 20000 characters" in out
+    assert len(out) < tools.MAX_READ_CHARS + 200 and "Lines 1-1 of 1" in out
     with open(root / "huge.txt", "wb") as f:
         f.truncate(tools.MAX_FILE_BYTES + 1)
     with pytest.raises(ToolError, match="too large"):

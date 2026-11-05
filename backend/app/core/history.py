@@ -34,14 +34,17 @@ def _msg_tokens(m: dict) -> int:
 
 
 def _cut(text: str, limit: int) -> str:
+    """Keep the start and the end of `text`: a tool result's last line often says how to continue."""
     if len(text) <= limit:
         return text
-    return text[:limit] + f"\n[... {len(text) - limit} more characters left out to fit the context window]"
+    tail = min(200, limit // 4)
+    note = f"\n[... {len(text) - limit} characters left out to fit the context window ...]\n"
+    return text[:limit - tail] + note + text[len(text) - tail:]
 
 
 def fit_messages(messages: list[dict], n_ctx: int, max_tokens: int, tools: list | None = None) -> tuple[list[dict], int]:
     """Return (messages that fit, number of messages left out). The input list is not changed."""
-    reserve = min(max_tokens, n_ctx // 2)  # room for the reply (the engine caps it at the window anyway)
+    reserve = min(max_tokens, n_ctx // 3)  # room for the reply (the engine caps it at the window anyway)
     budget = n_ctx - reserve - SAFETY_TOKENS
     if tools:
         budget -= estimate_tokens(json.dumps(tools, default=str))

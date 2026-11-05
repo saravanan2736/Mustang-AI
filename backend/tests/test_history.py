@@ -88,3 +88,13 @@ def test_a_trimmed_chat_still_has_a_single_system_message_at_the_start():
         assert NOTE in out[0]["content"]
         if with_system:
             assert out[0]["content"].startswith("You are helpful.")
+
+
+def test_a_cut_tool_result_keeps_its_ending_so_a_continue_hint_survives():
+    hint = "[Lines 1-77 of 300. To read more, call read_file again with start_line=78.]"
+    body = "L" * 9000 + "\n\n" + hint
+    msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "read it"},
+            {"role": "assistant", "content": "", "tool_calls": [{"id": "c", "function": {"name": "read_file", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "c", "content": body}]
+    out, _ = fit_messages(msgs, 4096, 1024)
+    assert out[-1]["content"].endswith(hint) and "left out" in out[-1]["content"]

@@ -16,6 +16,7 @@ export interface AgentEvent {
   ok?: boolean;
   content?: string;
   reason?: string | null;
+  auto?: boolean;
 }
 
 /** Tools that change files: every call is shown as a diff and needs the user's approval. */
@@ -37,15 +38,18 @@ export function applyAgentEvent(msg: ChatMessage, ev: AgentEvent): ChatMessage {
     return {
       ...msg,
       content: "",
+      reasoning: undefined, // the thinking that led to this call has done its job
       steps: [...steps, { call_id: ev.call_id, step: ev.step ?? steps.length + 1, name: ev.name ?? "tool",
                           arguments: ev.arguments ?? "{}", status: "running", note }],
     };
   }
   if (ev.event === "approval_required" && ev.call_id) {
+    // With "Approve all" on, the change is written at once: show its diff but never the buttons.
+    const status = ev.auto ? "running" : "awaiting";
     return {
       ...msg,
       steps: steps.map((s) =>
-        s.call_id === ev.call_id ? { ...s, status: "awaiting", summary: ev.summary, diff: ev.diff } : s
+        s.call_id === ev.call_id ? { ...s, status, summary: ev.summary, diff: ev.diff, auto: ev.auto } : s
       ),
     };
   }

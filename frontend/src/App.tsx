@@ -51,7 +51,9 @@ export default function App() {
   // Agent mode of the open chat (saved per conversation; a new chat starts with it off)
   const [agentEnabled, setAgentEnabled] = useState(false);
   const [workspace, setWorkspace] = useState<string | null>(null);
-  const agentOptions = agentEnabled ? { workspace } : null;
+  // Chats where the user chose "Approve all" (kept for this session only, never saved).
+  const [autoApproveChats, setAutoApproveChats] = useState<Record<string, boolean>>({});
+  const agentOptions = agentEnabled ? { workspace, autoApprove: Boolean(activeConversationId && autoApproveChats[activeConversationId]) } : null;
   // File changes agent mode made in this chat, by tool call id (for Undo)
   const [agentChanges, setAgentChanges] = useState<Record<string, AgentChange>>({});
 
@@ -202,9 +204,12 @@ export default function App() {
     }
   };
 
-  const handleApproveChange = async (callId: string, approved: boolean) => {
+  const handleApproveChange = async (callId: string, approved: boolean, approveAll = false) => {
     try {
-      await approveAgentChange(callId, approved);
+      await approveAgentChange(callId, approved, approveAll);
+      if (approveAll && approved && activeConversationId) {
+        setAutoApproveChats((prev) => ({ ...prev, [activeConversationId]: true }));
+      }
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Could not send your answer");
     }
@@ -332,6 +337,8 @@ export default function App() {
           workspace={workspace}
           modelName={engineStatus?.model_name}
           disabled={isGenerating}
+          autoApprove={Boolean(activeConversationId && autoApproveChats[activeConversationId])}
+          onTurnOffAutoApprove={() => activeConversationId && setAutoApproveChats((prev) => ({ ...prev, [activeConversationId]: false }))}
           onToggle={handleToggleAgent}
           onChooseWorkspace={handleChooseWorkspace}
           onClearWorkspace={handleClearWorkspace}

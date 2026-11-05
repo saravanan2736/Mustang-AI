@@ -44,7 +44,7 @@ async def test_create_shows_a_diff_and_writes_only_on_apply(ws):
 
 
 @pytest.mark.parametrize("path, content, msg", [
-    ("notes.txt", "x", "already exists"),
+    ("notes.txt", "Buy milk.\nCall Ravi at 6 pm.\n", "already has exactly this content"),
     ("run.bat", "format C:", "program and script"),
     ("evil.PS1", "x", "program and script"),
     ("link.lnk", "x", "program and script"),

@@ -43,6 +43,7 @@ class AgentOptions(BaseModel):
     """Agent mode for one reply: the model may call the built-in read-only tools."""
     workspace: str | None = Field(default=None, max_length=1024)  # folder the file tools may read
     max_steps: int = Field(default=DEFAULT_MAX_STEPS, ge=1, le=16)
+    auto_approve: bool = False  # the user chose "approve all changes in this chat" (the UI keeps it per chat)
 
 
 class UIChatRequest(ChatCompletionRequest):
@@ -135,7 +136,8 @@ async def _stream_agent_response(
                 await _insert_message(conv_id, "assistant", "".join(answer), token_count=len(answer))
 
         try:
-            async for ev in run_agent(engine, chat_req, ctx, max_steps=options.max_steps, cancel=cancel):
+            async for ev in run_agent(engine, chat_req, ctx, max_steps=options.max_steps, cancel=cancel,
+                                     auto_approve=options.auto_approve):
                 if await request.is_disconnected():
                     logger.info("Client disconnected during agent reply. Stopping.")
                     cancel.set()
@@ -144,6 +146,8 @@ async def _stream_agent_response(
                 if ev.kind == "content":
                     answer.append(ev.text)
                     yield frame({"content": ev.text})
+                elif ev.kind == "reasoning":
+                    yield frame({"reasoning": ev.text})
                 elif ev.kind == "assistant_turn":
                     # The text so far belonged to a tool-calling step, not the final answer.
                     answer.clear()
@@ -157,7 +161,7 @@ async def _stream_agent_response(
                 elif ev.kind == "approval":
                     yield frame({}, agent={"event": "approval_required", "step": ev.step, "call_id": ev.call_id,
                                            "name": ev.name, "arguments": ev.arguments, "summary": ev.text,
-                                           "diff": ev.extra.get("diff", "")})
+                                           "diff": ev.extra.get("diff", ""), "auto": bool(ev.extra.get("auto"))})
                 elif ev.kind == "tool_result":
                     yield frame({}, agent={"event": "tool_result", "step": ev.step, "call_id": ev.call_id,
                                            "name": ev.name, "ok": ev.ok, "content": ev.text[:2000]})
@@ -243,7 +247,8 @@ async def _stream_chat_response(
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {"content": chunk.delta_content},
+                            "delta": ({"content": chunk.delta_content, "reasoning": chunk.delta_reasoning}
+                                      if chunk.delta_reasoning else {"content": chunk.delta_content}),
                             "finish_reason": chunk.finish_reason,
                         }
                     ],
@@ -478,6 +483,7 @@ async def regenerate_response(
 class ApprovalDecision(BaseModel):
     call_id: str = Field(min_length=1, max_length=128)
     approved: bool
+    approve_all: bool = False  # also approve the later changes of this reply
 
 
 class UndoRequest(BaseModel):
@@ -504,7 +510,7 @@ async def _conversation_workspace(conv_id: str) -> Workspace | None:
 @router.post("/approve")
 async def approve_change(decision: ApprovalDecision):
     """The user's answer to a file change proposed by agent mode (shown as a diff)."""
-    if not resolve_approval(decision.call_id, decision.approved):
+    if not resolve_approval(decision.call_id, decision.approved, decision.approve_all):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No change with that id is waiting for approval.")
     return {"call_id": decision.call_id, "approved": decision.approved}
 

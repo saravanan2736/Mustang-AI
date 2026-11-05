@@ -331,11 +331,11 @@ async function detailOrThrow(res: Response, fallback: string): Promise<never> {
 }
 
 /** Answer a file change the agent proposed (shown as a diff). */
-export async function approveAgentChange(callId: string, approved: boolean): Promise<void> {
+export async function approveAgentChange(callId: string, approved: boolean, approveAll = false): Promise<void> {
   const res = await apiFetch(`/api/chat/approve`, {
     method: "POST",
     headers: getHeaders(false),
-    body: JSON.stringify({ call_id: callId, approved }),
+    body: JSON.stringify({ call_id: callId, approved, approve_all: approveAll }),
   });
   if (!res.ok) await detailOrThrow(res, "Could not send your answer");
 }

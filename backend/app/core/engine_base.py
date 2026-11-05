@@ -113,6 +113,7 @@ class ChatChunk(BaseModel):
     id: str
     model: str
     delta_content: str = ""
+    delta_reasoning: str = ""  # the model's thinking text (shown to the user, never stored or sent back)
     finish_reason: str | None = None
     # Complete tool calls, sent once with the chunk that ends the reply (finish_reason
     # "tool_calls"); the engine assembles the streamed fragments.

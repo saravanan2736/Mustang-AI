@@ -45,13 +45,15 @@ AGENT_PROMPT = (
 )
 WORKSPACE_OPEN = "The file tools work in the user's workspace folder; paths are relative to it ('.' is the top)."
 WORKSPACE_NONE = "No workspace folder is open, so there are no file tools."
-CHANGES_ALLOWED = ("create_file (it creates missing folders) and edit_file show the change to the user, who approves "
-                   "or denies each one; if a change is denied, don't repeat it unless the user asks. "
+CHANGES_ALLOWED = ("create_file (it creates missing folders, and replaces a file that already exists) and edit_file "
+                   "show the change to the user, who approves or denies each one; if a change is denied, don't repeat "
+                   "it unless the user asks. For long files read a part at a time (read_file start_line/end_line). "
                    "You cannot delete files or run programs.")
 CHANGES_NONE = "The tools only read; you cannot change, delete or run anything."
 
 _active: set[asyncio.Event] = set()
 _pending_approvals: dict[str, asyncio.Future] = {}
+_approve_all: set[str] = set()  # call ids the user approved with "approve all changes in this chat"
 
 
 def cancel_all() -> int:
@@ -65,11 +67,14 @@ def cancel_all() -> int:
     return len(_active)
 
 
-def resolve_approval(call_id: str, approved: bool) -> bool:
-    """The user's answer to a proposed change. False if no change with that id is waiting."""
+def resolve_approval(call_id: str, approved: bool, approve_all: bool = False) -> bool:
+    """The user's answer to a proposed change. False if no change with that id is waiting.
+    `approve_all` (only meaningful with approved=True) also approves the rest of this reply's changes."""
     fut = _pending_approvals.get(call_id)
     if fut is None or fut.done():
         return False
+    if approve_all and approved:
+        _approve_all.add(call_id)
     fut.set_result(bool(approved))
     return True
 
@@ -92,7 +97,7 @@ async def _wait_for_approval(call_id: str, cancel: asyncio.Event) -> bool:
 
 @dataclass
 class AgentEvent:
-    kind: Literal["content", "tool_call", "approval", "tool_result", "assistant_turn", "tool_turn", "done"]
+    kind: Literal["content", "reasoning", "tool_call", "approval", "tool_result", "assistant_turn", "tool_turn", "done"]
     text: str = ""
     step: int = 0
     call_id: str = ""
@@ -186,7 +191,10 @@ async def run_agent(
     *,
     max_steps: int = DEFAULT_MAX_STEPS,
     cancel: asyncio.Event | None = None,
+    auto_approve: bool = False,
 ) -> AsyncIterator[AgentEvent]:
+    """`auto_approve`: the user chose "approve all changes in this chat". Changes are still shown
+    (diff, Undo) but written without waiting; the same limits apply (workspace only, no programs)."""
     cancel = cancel or asyncio.Event()
     _active.add(cancel)
     try:
@@ -214,6 +222,8 @@ async def run_agent(
                 if cancel.is_set():
                     await engine.cancel_generation()
                     break
+                if chunk.delta_reasoning:
+                    yield AgentEvent("reasoning", text=chunk.delta_reasoning, step=step)
                 if chunk.delta_content:
                     content.append(chunk.delta_content)
                     shown = tags.feed(chunk.delta_content)  # tool-call tags the model wrote as text stay hidden
@@ -257,8 +267,15 @@ async def run_agent(
                     wrap_up_reason = "repeated_calls"
                 if isinstance(result, Proposal):
                     yield AgentEvent("approval", step=step, call_id=call.id, name=call.function.name,
-                                     arguments=call.function.arguments, text=result.summary, extra={"diff": result.diff})
-                    approved = await _wait_for_approval(call.id, cancel)
+                                     arguments=call.function.arguments, text=result.summary,
+                                     extra={"diff": result.diff, "auto": auto_approve})
+                    if auto_approve:
+                        approved = not cancel.is_set()
+                    else:
+                        approved = await _wait_for_approval(call.id, cancel)
+                        if call.id in _approve_all:
+                            _approve_all.discard(call.id)
+                            auto_approve = approved
                     if cancel.is_set():
                         yield AgentEvent("tool_result", step=step, call_id=call.id, name=call.function.name, ok=False,
                                          text="Stopped before the change was approved; nothing was written.")

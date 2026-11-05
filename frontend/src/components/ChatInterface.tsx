@@ -3,7 +3,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
-import { ArrowDown, Check, Copy, Pencil, RotateCcw } from "lucide-react";
+import { ArrowDown, Check, ChevronRight, Copy, Pencil, RotateCcw } from "lucide-react";
 import { AgentChange, ChatMessage } from "../types";
 import { CodeBlock } from "./CodeBlock";
 import { ToolSteps } from "./ToolSteps";
@@ -16,7 +16,7 @@ interface ChatInterfaceProps {
   onEditMessage?: (messageId: string, newContent: string) => void;
   activeModelName?: string | null;
   agentChanges?: Record<string, AgentChange>;
-  onApproveChange?: (callId: string, approved: boolean) => void;
+  onApproveChange?: (callId: string, approved: boolean, approveAll?: boolean) => void;
   onUndoChange?: (callId: string) => void;
 }
 
@@ -50,6 +50,30 @@ function useCopy() {
   }, []);
   return { copied, copy };
 }
+
+/** The model's thinking: open while the reply is still empty, a collapsed line afterwards. */
+const Thinking = memo(function Thinking({ text, waiting }: { text: string; waiting: boolean }) {
+  const [userOpen, setUserOpen] = useState<boolean | null>(null);
+  const open = userOpen ?? waiting;
+  return (
+    <div className="mb-3 not-prose">
+      <button
+        type="button"
+        onClick={() => setUserOpen(!open)}
+        className="flex items-center gap-1.5 text-xs text-subtle hover:text-fg transition-colors"
+        aria-expanded={open}
+      >
+        <ChevronRight className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`} />
+        <span className={waiting ? "animate-pulse" : ""}>{waiting ? "Thinking…" : "Show thinking"}</span>
+      </button>
+      {open && (
+        <pre className="mt-1.5 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-panel border border-line px-3 py-2 text-xs leading-relaxed text-muted font-sans">
+          {text}
+        </pre>
+      )}
+    </div>
+  );
+});
 
 interface UserMessageProps {
   msg: ChatMessage;
@@ -123,7 +147,7 @@ interface AssistantMessageProps {
   streaming: boolean;
   isLast: boolean;
   changes?: Record<string, AgentChange>;
-  onApprove: (callId: string, approved: boolean) => void;
+  onApprove: (callId: string, approved: boolean, approveAll?: boolean) => void;
   onUndo: (callId: string) => void;
   onRegenerate: () => void;
 }
@@ -146,7 +170,8 @@ const AssistantMessage = memo(function AssistantMessage({
       {msg.steps?.length ? (
         <ToolSteps steps={msg.steps} stopReason={msg.agent_stop_reason} changes={changes} onApprove={onApprove} onUndo={onUndo} />
       ) : null}
-      {!text && !msg.steps?.length && (
+      {msg.reasoning ? <Thinking text={stripEmoji(msg.reasoning)} waiting={streaming && !text && !toolRunning} /> : null}
+      {!text && !msg.steps?.length && !msg.reasoning && (
         <p className={`text-[13px] text-subtle ${streaming ? "animate-pulse" : ""}`}>
           {streaming
             ? "Thinking…"
@@ -197,7 +222,7 @@ export const ChatInterface: React.FC<ChatInterfaceProps> = ({
   handlers.current = { onRegenerate, onEditMessage, onApproveChange, onUndoChange };
   const regenerate = useCallback(() => handlers.current.onRegenerate?.(), []);
   const edit = useCallback((id: string, text: string) => handlers.current.onEditMessage?.(id, text), []);
-  const approve = useCallback((id: string, ok: boolean) => handlers.current.onApproveChange?.(id, ok), []);
+  const approve = useCallback((id: string, ok: boolean, all?: boolean) => handlers.current.onApproveChange?.(id, ok, all), []);
   const undo = useCallback((id: string) => handlers.current.onUndoChange?.(id), []);
 
   // Scroll only this container (scrollIntoView also moves the clipped panels around it).

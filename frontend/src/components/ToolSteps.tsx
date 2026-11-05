@@ -52,7 +52,7 @@ interface ToolStepsProps {
   stopReason?: string | null;
   /** Journal state of this chat's file changes, by call id (for Undo). */
   changes?: Record<string, AgentChange>;
-  onApprove?: (callId: string, approved: boolean) => void;
+  onApprove?: (callId: string, approved: boolean, approveAll?: boolean) => void;
   onUndo?: (callId: string) => void;
 }
 
@@ -104,6 +104,14 @@ export const ToolSteps: React.FC<ToolStepsProps> = ({ steps, stopReason, changes
                 className="h-7 px-3.5 rounded-xl border border-line/70 hover:bg-raised/80 text-fg text-xs font-medium transition-all"
               >
                 Deny
+              </button>
+              <button
+                type="button"
+                onClick={() => onApprove?.(s.call_id, true, true)}
+                className="h-7 px-3.5 rounded-xl border border-line/70 hover:bg-raised/80 text-fg text-xs font-medium transition-all"
+                title="Approve this and every later change in this chat without asking. You can still undo each one."
+              >
+                Approve all in this chat
               </button>
               <span className="text-xs text-subtle ml-1">Nothing is written unless you approve.</span>
             </div>

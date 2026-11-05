@@ -615,6 +615,7 @@ class LlamaServerEngine(InferenceEngine):
                                 continue
                             delta = choices[0].get("delta", {})
                             content = delta.get("content") or ""
+                            reasoning = delta.get("reasoning_content") or delta.get("reasoning") or ""
                             finish_reason = choices[0].get("finish_reason")
                             if delta.get("tool_calls"):
                                 tool_calls.add(delta["tool_calls"])
@@ -631,6 +632,7 @@ class LlamaServerEngine(InferenceEngine):
                                 id=chunk_json.get("id", "chunk"),
                                 model=self._config.model_path.name,
                                 delta_content=content,
+                                delta_reasoning=reasoning,
                                 finish_reason="tool_calls" if finished_calls else finish_reason,
                                 tool_calls=finished_calls,
                             )

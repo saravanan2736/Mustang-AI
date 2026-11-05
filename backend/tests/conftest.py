@@ -124,6 +124,8 @@ class ScriptedEngine:
 
         self.requests.append(request)
         turn = self.script.pop(0) if self.script else {"text": "done"}
+        if turn.get("thinking"):
+            yield ChatChunk(id="s", model="scripted.gguf", delta_reasoning=turn["thinking"])
         if turn.get("text"):
             yield ChatChunk(id="s", model="scripted.gguf", delta_content=turn["text"])
         calls = turn.get("calls")

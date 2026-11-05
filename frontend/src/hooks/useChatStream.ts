@@ -6,10 +6,12 @@ import { AgentEvent, applyAgentEvent, historyForRequest } from "../services/agen
 /** Agent mode for one request: the backend may run its built-in read-only tools. */
 export interface AgentRequestOptions {
   workspace?: string | null;
+  /** The user chose "Approve all changes" in this chat: changes are written without waiting. */
+  autoApprove?: boolean;
 }
 
 const agentBody = (agent?: AgentRequestOptions | null) =>
-  agent ? { agent: { workspace: agent.workspace || null } } : {};
+  agent ? { agent: { workspace: agent.workspace || null, auto_approve: Boolean(agent.autoApprove) } } : {};
 
 export function useChatStream() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -90,6 +92,17 @@ export function useChatStream() {
               const ev = data.agent as AgentEvent;
               setMessages((prev) =>
                 prev.map((m) => (m.id === assistantMessageId ? applyAgentEvent(m, ev) : m))
+              );
+            }
+
+            const thinking = data.choices?.[0]?.delta?.reasoning;
+            if (thinking) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMessageId
+                    ? { ...m, reasoning: ((m.reasoning ?? "") + thinking).slice(-20000) }
+                    : m
+                )
               );
             }
 

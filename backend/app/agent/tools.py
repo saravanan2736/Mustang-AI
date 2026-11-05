@@ -16,7 +16,7 @@ from app.agent.registry import ToolContext, ToolError, ToolSpec, register
 from app.agent.workspace import WorkspaceError
 
 MAX_READ_BYTES = 256 * 1024
-MAX_READ_CHARS = 20_000
+MAX_READ_CHARS = 8_000  # per call; longer files are read in parts (start_line / end_line)
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_LIST_ENTRIES = 200
 MAX_SEARCH_FILES = 2_000
@@ -183,7 +183,7 @@ def _list_files(path: str, ctx: ToolContext) -> str:
     return header + "\n" + "\n".join(shown) + more
 
 
-def _read_file(path: str, ctx: ToolContext) -> str:
+def _read_file(path: str, ctx: ToolContext, start_line: int | None = None, end_line: int | None = None) -> str:
     target = _resolve(ctx, path)
     if target.is_dir():
         raise ToolError(f"{path!r} is a folder. Use list_files.")
@@ -194,11 +194,36 @@ def _read_file(path: str, ctx: ToolContext) -> str:
         data = f.read(MAX_READ_BYTES)
     if _looks_binary(data[:8192]) and not data.startswith((b"\xff\xfe", b"\xfe\xff")):
         raise ToolError(f"{path!r} is a binary file, not text.")
-    text = _decode(data)
-    truncated = size > MAX_READ_BYTES or len(text) > MAX_READ_CHARS
-    text = text[:MAX_READ_CHARS]
-    note = f"\n\n[Showing the first {len(text)} characters of {_size(size)}.]" if truncated else ""
-    return text + note
+    lines = _decode(data).splitlines(keepends=True)
+    total = len(lines)
+    partial_file = size > MAX_READ_BYTES  # only the first part of a very large file is loaded
+    first = max(1, start_line or 1)
+    if first > total:
+        raise ToolError(f"{path!r} has only {total} line{'s' if total != 1 else ''}.")
+    last = min(end_line or total, total)
+    if last < first:
+        raise ToolError("end_line is before start_line.")
+    out, used, n, cut_line = [], 0, first, None
+    while n <= last:
+        line = lines[n - 1]
+        if out and used + len(line) > MAX_READ_CHARS:
+            break
+        if len(line) > MAX_READ_CHARS:
+            cut_line, line = n, line[:MAX_READ_CHARS]
+        out.append(line)
+        used += len(line)
+        n += 1
+    shown_last = n - 1
+    body = "".join(out)
+    if first == 1 and shown_last == total and not partial_file and cut_line is None:
+        return body  # the whole file, unchanged
+    tail = ""
+    if cut_line is not None:
+        tail = f" Line {cut_line} is longer than {MAX_READ_CHARS} characters and was cut."
+    if shown_last < total:
+        tail += f" To read more, call read_file again with start_line={shown_last + 1}."
+    of = f"{total}+" if partial_file else str(total)
+    return f"{body}\n\n[Lines {first}-{shown_last} of {of} ({_size(size)}).{tail}]"
 
 
 def _search_text(query: str, path: str, ctx: ToolContext) -> str:
@@ -251,9 +276,15 @@ register(ToolSpec(
 
 register(ToolSpec(
     name="read_file",
-    description="Read a text file from the user's workspace (up to 20,000 characters).",
-    parameters=_obj({"path": {"type": "string", "description": "File path relative to the workspace, e.g. notes.txt"}}, ["path"]),
-    handler=lambda a, c: _in_thread(_read_file, a["path"], c),
+    description=("Read a text file from the user's workspace. A long file comes back in parts of about 8,000 "
+                 "characters with a note saying where to continue; pass start_line and end_line to read a "
+                 "specific range."),
+    parameters=_obj({
+        "path": {"type": "string", "description": "File path relative to the workspace, e.g. notes.txt"},
+        "start_line": {"type": "integer", "description": "First line to read (1 = the top). Optional."},
+        "end_line": {"type": "integer", "description": "Last line to read. Optional."},
+    }, ["path"]),
+    handler=lambda a, c: _in_thread(_read_file, a["path"], c, a.get("start_line"), a.get("end_line")),
     needs_workspace=True,
 ))
 
@@ -354,8 +385,11 @@ def _prepare_create(path: str, content: str, ctx: ToolContext):
         target = ws.resolve(path, must_exist=False)
     except WorkspaceError as e:
         raise ToolError(str(e))
+    _check_writable_name(target, path)
+    if len(content) > MAX_WRITE_CHARS:
+        raise ToolError(f"Content is too long (max {MAX_WRITE_CHARS} characters).")
     if target.exists():
-        raise ToolError(f"{path!r} already exists. Use edit_file to change it.")
+        return _prepare_replace(ws, target, path, content, ctx)
     # Missing folders on the way are created together with the file (the approval shows them).
     new_dirs: list[Path] = []
     probe = target.parent
@@ -367,9 +401,6 @@ def _prepare_create(path: str, content: str, ctx: ToolContext):
     if len(new_dirs) > MAX_NEW_FOLDERS:
         raise ToolError(f"{path!r} would create {len(new_dirs)} new folders (the limit is {MAX_NEW_FOLDERS}).")
     new_dirs.reverse()
-    _check_writable_name(target, path)
-    if len(content) > MAX_WRITE_CHARS:
-        raise ToolError(f"Content is too long (max {MAX_WRITE_CHARS} characters).")
     data = content.encode("utf-8")
     rel = ws.relative(target)
     n = len(content.splitlines())
@@ -384,6 +415,44 @@ def _prepare_create(path: str, content: str, ctx: ToolContext):
 
     return Proposal(summary=f"Create {rel}{folders} ({n} line{'s' if n != 1 else ''})",
                     diff=_diff("", content, rel, True), apply=apply)
+
+
+def _prepare_replace(ws, target: Path, path: str, content: str, ctx: ToolContext):
+    """create_file on a file that exists: replace its whole content. Shown as a diff, needs approval,
+    and the old version is kept for Undo (same journal as an edit)."""
+    from app.agent.changes import apply_change, sha256_bytes
+    from app.agent.registry import Proposal
+
+    if target.is_dir():
+        raise ToolError(f"{path!r} is a folder.")
+    raw = target.read_bytes()
+    if len(raw) > MAX_EDIT_FILE_BYTES:
+        raise ToolError(f"{path!r} is too large to replace ({_size(len(raw))}; the limit is {_size(MAX_EDIT_FILE_BYTES)}).")
+    if raw.startswith((b"\xff\xfe", b"\xfe\xff")) or _looks_binary(raw[:8192]):
+        raise ToolError(f"{path!r} is not a UTF-8 text file; it can't be replaced here.")
+    bom = raw.startswith(_UTF8_BOM)
+    try:
+        old = raw[len(_UTF8_BOM) if bom else 0:].decode("utf-8")
+    except UnicodeDecodeError:
+        raise ToolError(f"{path!r} is not a UTF-8 text file; it can't be replaced here.")
+    crlf = "\r\n" in old
+    old_norm = old.replace("\r\n", "\n")
+    new_norm = content.replace("\r\n", "\n")
+    if new_norm == old_norm:
+        raise ToolError(f"{path!r} already has exactly this content; nothing would change.")
+    out = new_norm.replace("\n", "\r\n") if crlf else new_norm  # keep the file's own line endings
+    data = (_UTF8_BOM if bom else b"") + out.encode("utf-8")
+    before_sha = sha256_bytes(raw)
+    rel = ws.relative(target)
+    n = len(new_norm.splitlines())
+
+    async def apply(call_id: str) -> str:
+        await asyncio.to_thread(apply_change, ws, target, data, kind="edit", call_id=call_id,
+                                conversation_id=ctx.conversation_id, expected_sha256=before_sha)
+        return f"Replaced {rel} ({n} line{'s' if n != 1 else ''}). The previous version is kept for Undo."
+
+    return Proposal(summary=f"Replace {rel} ({n} line{'s' if n != 1 else ''})",
+                    diff=_diff(old_norm, new_norm, rel, False), apply=apply)
 
 
 def _prepare_edit(path: str, old_text: str, new_text: str, ctx: ToolContext):
@@ -438,7 +507,9 @@ def _prepare_edit(path: str, old_text: str, new_text: str, ctx: ToolContext):
 
 register(ToolSpec(
     name="create_file",
-    description="Create a new text file in the user's workspace. The user sees the content and must approve it.",
+    description=("Create a text file in the user's workspace (missing folders are created). If the file already "
+                 "exists its whole content is replaced; for a small change use edit_file. The user sees the "
+                 "content or diff and must approve it."),
     parameters=_obj({
         "path": {"type": "string", "description": "New file path relative to the workspace, e.g. todo.md"},
         "content": {"type": "string", "description": "The full text of the file"},

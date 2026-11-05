@@ -98,6 +98,8 @@ export interface AgentStep {
   /** File changes (create_file, edit_file): one-line summary and the unified diff shown for approval. */
   summary?: string;
   diff?: string;
+  /** Written without asking, because the user chose "Approve all" for this chat. */
+  auto?: boolean;
 }
 
 /** A file change agent mode made, as the backend's change journal reports it. */
@@ -110,6 +112,8 @@ export interface AgentChange {
 }
 
 export interface ChatMessage {
+  /** The model's thinking text while it streams (not stored). */
+  reasoning?: string;
   id: string;
   conversation_id?: string;
   role: "system" | "user" | "assistant" | "tool";
