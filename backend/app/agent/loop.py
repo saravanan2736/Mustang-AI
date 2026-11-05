@@ -23,7 +23,7 @@ from dataclasses import dataclass, field
 from typing import AsyncIterator, Literal
 
 from app.agent.changes import ChangeError
-from app.agent.textcalls import TagFilter, extract_text_calls
+from app.agent.textcalls import OPEN as OPEN_TAG, TagFilter, extract_text_calls
 from app.agent.registry import Proposal, ToolContext, ToolError, available_tools, get_tool, validate_arguments
 from app.core.engine_base import ChatCompletionRequest, ChatMessage, InferenceEngine, ToolCall, ToolCallFunction
 
@@ -35,6 +35,9 @@ APPROVAL_TIMEOUT_S = 600.0
 # Room for one step: a whole file as a tool argument, or thinking plus a call. The UI default (2048)
 # cut long create_file calls off in the middle.
 AGENT_MIN_TOKENS = 4096
+
+NO_ANSWER_AFTER_TOOLS = "I couldn't finish this with my tools. The steps above show what happened."
+NO_ANSWER_AFTER_DENIAL = "Understood. I didn't make that change."
 
 AGENT_PROMPT = (
     "You can use tools on the user's computer to answer. Use a tool only when it is needed; "
@@ -246,8 +249,15 @@ async def run_agent(
                 if text_calls and not calls and not final_turn:
                     calls = [ToolCall(id=cid, function=ToolCallFunction(name=n, arguments=a)) for cid, n, a in text_calls]
                     text = cleaned
-                elif final_turn or not text_calls:
-                    # Not usable as calls (no tools allowed now, or malformed): show what was written.
+                elif final_turn:
+                    # No tools are allowed now, but the model wrote a call anyway. Raw tags are noise for
+                    # the user: show only what it said before them, or a plain sentence if that is nothing.
+                    before = text.split(OPEN_TAG, 1)[0].strip()
+                    if not before:  # (text before the tags was already shown as it streamed)
+                        yield AgentEvent("content", text=NO_ANSWER_AFTER_DENIAL if wrap_up_reason == "denied"
+                                         else NO_ANSWER_AFTER_TOOLS, step=step)
+                elif not text_calls:
+                    # Malformed tags: show what was written.
                     yield AgentEvent("content", text=tags.held, step=step)
             if not calls or final_turn:
                 yield AgentEvent("done", finish_reason="stop" if calls else (finish or "stop"), reason=wrap_up_reason, step=step)
@@ -258,6 +268,7 @@ async def run_agent(
             messages.append(assistant)
 
             any_ok = False
+            denied_any = False
             for call in calls:
                 yield AgentEvent("tool_call", step=step, call_id=call.id, name=call.function.name, arguments=call.function.arguments)
                 try:
@@ -291,6 +302,7 @@ async def run_agent(
                             logger.exception(f"Applying {call.function.name} failed")
                             ok, result = False, f"Error: {call.function.name} failed; nothing was changed."
                     else:
+                        denied_any = True
                         ok, result = False, ("The user denied this change. Nothing was written: the file was NOT created or changed. "
                                   "Tell the user you did not make the change, and don't repeat it unless they ask.")
                 any_ok = any_ok or ok
@@ -303,6 +315,8 @@ async def run_agent(
                     return
 
             failed_steps = 0 if any_ok else failed_steps + 1
+            if wrap_up_reason is None and denied_any:
+                wrap_up_reason = "denied"  # the user said no: answer now, don't go looking for another way
             if wrap_up_reason is None and failed_steps >= 2:
                 wrap_up_reason = "tool_errors"
             if wrap_up_reason is None and step >= max_steps:

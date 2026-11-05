@@ -172,3 +172,45 @@ async def test_the_engine_passes_reasoning_content_through(monkeypatch):
     chunks = [c async for c in e.stream_chat(ChatCompletionRequest(messages=[{"role": "user", "content": "hi"}]))]
     assert [c.delta_reasoning for c in chunks if c.delta_reasoning] == ["hmm "]
     assert "".join(c.delta_content for c in chunks) == "Hi"
+
+
+# --- found with the 9B model: raw tags in the last turn, probing after a denial ---------------
+
+TAG_CALL = "<tool_call>\n<function=read_file>\n<parameter=path>\nx.txt\n</parameter>\n</function>\n</tool_call>"
+
+
+@pytest.mark.asyncio
+async def test_tool_call_tags_in_the_last_turn_never_reach_the_user(scripted_engine, ctx):
+    bad = ("read_file", json.dumps({"path": "missing.txt"}))
+    engine = scripted_engine([{"calls": [bad]}, {"calls": [bad]}, {"text": TAG_CALL}])
+    events = await _run(engine, ctx)
+    shown = "".join(e.text for e in events if e.kind == "content")
+    assert "<tool_call>" not in shown and "<function" not in shown
+    assert shown.strip() == loop.NO_ANSWER_AFTER_TOOLS
+    assert events[-1].reason == "tool_errors"
+
+
+@pytest.mark.asyncio
+async def test_text_before_tags_in_the_last_turn_is_kept(scripted_engine, ctx):
+    bad = ("read_file", json.dumps({"path": "missing.txt"}))
+    engine = scripted_engine([{"calls": [bad]}, {"calls": [bad]}, {"text": "I could not read it. " + TAG_CALL}])
+    shown = "".join(e.text for e in await _run(engine, ctx) if e.kind == "content")
+    assert shown.strip() == "I could not read it." and "<tool_call>" not in shown
+
+
+@pytest.mark.asyncio
+async def test_a_denied_change_ends_the_tool_steps_so_the_model_answers_at_once(scripted_engine, ctx):
+    engine = scripted_engine([{"calls": [CREATE_A]}, {"text": "Understood, I did not create it."}])
+    events = await _run(engine, ctx, lambda cid: loop.resolve_approval(cid, False))
+    assert [e.name for e in events if e.kind == "tool_call"] == ["create_file"], "no probing after a denial"
+    assert engine.requests[1].tool_choice == "none"
+    assert not (ctx.workspace.root / "a.txt").exists()
+    assert events[-1].reason == "denied" and "Understood" in "".join(e.text for e in events if e.kind == "content")
+
+
+@pytest.mark.asyncio
+async def test_after_a_denial_a_tag_only_last_turn_becomes_a_plain_acknowledgement(scripted_engine, ctx):
+    engine = scripted_engine([{"calls": [CREATE_A]}, {"text": TAG_CALL}])
+    events = await _run(engine, ctx, lambda cid: loop.resolve_approval(cid, False))
+    shown = "".join(e.text for e in events if e.kind == "content")
+    assert shown.strip() == loop.NO_ANSWER_AFTER_DENIAL and "<tool_call>" not in shown

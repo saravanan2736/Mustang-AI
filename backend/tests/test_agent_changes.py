@@ -204,7 +204,7 @@ async def test_denied_change_writes_nothing(scripted_engine, ws):
     result = next(e for e in events if e.kind == "tool_result")
     assert not result.ok and result.text.startswith("The user denied this change")
     assert (_root(ws) / "notes.txt").read_text(encoding="utf-8") == "Buy milk.\nCall Ravi at 6 pm.\n"
-    assert events[-1].kind == "done" and events[-1].reason is None
+    assert events[-1].kind == "done" and events[-1].reason == "denied"  # a denial ends the tool steps
 
 
 @pytest.mark.asyncio
