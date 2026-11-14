@@ -166,26 +166,47 @@ def test_the_task_list_is_offered_without_a_workspace():
 
 
 @pytest.mark.asyncio
-async def test_the_task_list_is_part_of_the_agents_instructions(scripted_engine, ctx):
+async def test_the_task_list_goes_at_the_end_of_the_users_message_not_into_the_system_message(scripted_engine, ctx):
     ctx.tasks = TASKS
     eng = scripted_engine([{"text": "ok"}])
     async for _ in loop.run_agent(eng, ChatCompletionRequest(messages=[{"role": "user", "content": "go"}]), ctx):
         pass
-    system = eng.requests[0].messages[0].content
-    assert "[x] Read the code" in system and "[~] Write tests" in system and "[ ] Fix bugs" in system
-    assert "update_tasks" in system
+    first = eng.requests[0].messages
+    user = first[-1].content
+    assert first[-1].role == "user" and user.startswith("go\n\n")
+    assert "[x] Read the code" in user and "[~] Write tests" in user and "[ ] Fix bugs" in user
+    assert "Your task list" not in first[0].content and "update_tasks" in first[0].content
     quiet = scripted_engine([{"text": "ok"}])
     async for _ in loop.run_agent(quiet, ChatCompletionRequest(messages=[{"role": "user", "content": "go"}]), ToolContext(workspace=ctx.workspace)):
         pass
-    assert "Your task list for this chat" not in quiet.requests[0].messages[0].content
+    assert quiet.requests[0].messages[-1].content == "go"
 
 
 @pytest.mark.asyncio
-async def test_a_model_updating_its_list_in_the_loop_changes_what_it_sees_next(scripted_engine, ctx):
+async def test_only_the_latest_user_message_carries_the_list(scripted_engine, ctx):
+    ctx.tasks = TASKS
+    eng = scripted_engine([{"text": "ok"}])
+    msgs = [{"role": "user", "content": "first"}, {"role": "assistant", "content": "a"}, {"role": "user", "content": "second"}]
+    async for _ in loop.run_agent(eng, ChatCompletionRequest(messages=msgs), ctx):
+        pass
+    sent = eng.requests[0].messages
+    users = [m.content for m in sent if m.role == "user"]
+    assert users[0] == "first" and "[x] Read the code" in users[1]
+
+
+@pytest.mark.asyncio
+async def test_updating_the_list_mid_run_never_changes_the_start_of_the_prompt(scripted_engine, ctx):
+    """llama.cpp reuses what it already read only while the start of the prompt is unchanged. The system message and
+    the user's message are the same on every step, and the new list is in the history as the model's own call."""
+    ctx.tasks = [{"text": "Read the code", "status": "in_progress"}]
     call = ("update_tasks", json.dumps({"tasks": TASKS}))
-    eng = scripted_engine([{"calls": [call]}, {"text": "Done."}])
+    eng = scripted_engine([{"calls": [call]}, {"calls": [("get_current_time", "{}")]}, {"text": "Done."}])
     events = []
     async for ev in loop.run_agent(eng, ChatCompletionRequest(messages=[{"role": "user", "content": "go"}]), ctx):
         events.append(ev)
-    assert next(e for e in events if e.kind == "tool_result").ok
-    assert "[~] Write tests" in eng.requests[1].messages[0].content, "the next step sees the new list"
+    assert next(e for e in events if e.kind == "tool_result").ok and ctx.tasks == TASKS
+    r0, r1, r2 = (r.messages for r in eng.requests)
+    assert r0[0].content == r1[0].content == r2[0].content, "system message identical on every step"
+    assert r0[1].content == r1[1].content == r2[1].content, "the user's message identical on every step"
+    assert r1[:2] == r2[:2] and r2[:len(r1)] == r1, "each step's prompt starts with the previous step's prompt"
+    assert '"Write tests", "status": "in_progress"' in r1[2].tool_calls[0].function.arguments, "the new list is visible as the model's own call"

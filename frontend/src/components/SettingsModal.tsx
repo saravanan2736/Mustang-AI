@@ -300,9 +300,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ))}
                 </div>
                 <p className="text-xs text-muted mt-2">
-                  Auto lets the model think in normal chat and turns thinking off while the agent works, which is
-                  faster and just as accurate for tool calls. Thinking uses up the reply length: a model can use all
-                  of it on thinking and never answer, so use Off for quick answers on small GPUs.
+                  Auto lets the model think in normal chat (up to about 768 tokens, then it must answer) and turns
+                  thinking off while the agent works, which is faster and just as accurate for tool calls. Off gives
+                  the quickest answers on a small GPU.
                 </p>
               </div>
 

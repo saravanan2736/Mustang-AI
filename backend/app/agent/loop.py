@@ -140,12 +140,27 @@ def _with_agent_prompt(messages: list[ChatMessage], ctx: ToolContext) -> list[Ch
     note = AGENT_PROMPT.format(workspace=WORKSPACE_OPEN if ctx.workspace else WORKSPACE_NONE,
                                changes=CHANGES_ALLOWED if can_change else CHANGES_NONE,
                                terminal=TERMINAL_ON if ctx.terminal and ctx.workspace else NO_TERMINAL)
-    if ctx.tasks:
-        note += "\n\n" + task_section(ctx.tasks)
+
     if messages and messages[0].role == "system":
         first = messages[0].model_copy(update={"content": f"{messages[0].content.rstrip()}\n\n{note}"})
         return [first, *messages[1:]]
     return [ChatMessage(role="system", content=note), *messages]
+
+
+def _with_task_list(messages: list[ChatMessage], ctx: ToolContext) -> list[ChatMessage]:
+    """Put the chat's task list at the end of the user's latest message, once per run. The system message and
+    everything before it stay the same for the whole run, so llama.cpp's prompt cache is never invalidated by
+    the list (in the system message every update_tasks call forced the whole prompt to be read again). Changes
+    the agent makes during the run are in the history as its own update_tasks calls."""
+    if not ctx.tasks:
+        return messages
+    for i in range(len(messages) - 1, -1, -1):
+        if messages[i].role == "user":
+            section = task_section(ctx.tasks)
+            messages = list(messages)
+            messages[i] = messages[i].model_copy(update={"content": f"{messages[i].content}\n\n{section}"})
+            break
+    return messages
 
 
 async def _execute(call: ToolCall, ctx: ToolContext, seen: dict[str, _Seen], version: int) -> tuple[bool, "str | Proposal"]:
@@ -221,8 +236,7 @@ async def run_agent(
     _active.add(cancel)
     try:
         tools = [t.definition() for t in available_tools(ctx)]
-        original = list(request.messages)
-        messages = _with_agent_prompt(original, ctx)
+        messages = _with_task_list(_with_agent_prompt(list(request.messages), ctx), ctx)
         seen: dict[str, _Seen] = {}
         version = 0  # bumped whenever an approved change is written
         schemas = {t.name: t.parameters for t in available_tools(ctx)}
@@ -232,7 +246,6 @@ async def run_agent(
         step = 0
         while True:
             step += 1
-            messages[0] = _with_agent_prompt(original, ctx)[0]  # the task list may have changed in the last step
             final_turn = wrap_up_reason is not None
             req = request.model_copy(update={  # own copy of the list: a sent request never changes
                 "messages": list(messages), "tools": tools, "tool_choice": "none" if final_turn else "auto",

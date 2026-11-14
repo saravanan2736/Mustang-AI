@@ -76,6 +76,7 @@ class ModelLoadRequest(BaseModel):
     flash_attention: bool = True
     speculation: bool = True
     kv_cache_type: Literal["f16", "q8_0"] = "f16"
+    reasoning_budget: int = Field(default=768, ge=-1, le=32768)  # -1 = no limit on thinking
 
 
 # --- Model Library Endpoints (Milestone 3) ---
@@ -369,6 +370,7 @@ async def load_model(
         flash_attention=req.flash_attention,
         speculation=req.speculation,
         kv_cache_type=req.kv_cache_type,
+        reasoning_budget=req.reasoning_budget,
         port=settings.ENGINE_PORT,
         host=settings.ENGINE_HOST,
     )

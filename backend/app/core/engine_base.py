@@ -38,6 +38,10 @@ class EngineConfig(BaseModel):
     # KV cache precision. f16 is exact; q8_0 saves memory (about 100-200 MB on the models tested at 16k-32k) but
     # changes the output slightly, so it is an option, not the default. Quantized V cache needs flash attention.
     kv_cache_type: Literal["f16", "q8_0"] = "f16"
+    # Most tokens a reasoning model may spend thinking before it must answer (-1 = no limit). Measured on the
+    # 9B: with no limit, three plain questions all used the whole 1,500-token reply on thinking and got no
+    # answer (30 s each); with 768 all three were answered (17-22 s).
+    reasoning_budget: int = Field(default=768, ge=-1, le=32768)
     port: int = 18080
     host: str = "127.0.0.1"
 
@@ -54,6 +58,12 @@ class EngineStatus(BaseModel):
     port: int | None = None
     error_message: str | None = None
     active_tokens_per_sec: float = 0.0
+    # The last request, as llama-server timed it: how much of the prompt was read now and how much came from the
+    # prompt cache, and the real prompt and generation speeds.
+    last_prompt_tokens: int = 0
+    last_cached_tokens: int = 0
+    last_prompt_tps: float = 0.0
+    last_decode_tps: float = 0.0
 
 
 _TOOL_NAME_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"

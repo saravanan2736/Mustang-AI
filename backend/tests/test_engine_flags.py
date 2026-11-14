@@ -101,3 +101,12 @@ async def test_other_start_failures_are_not_retried(monkeypatch):
     monkeypatch.setattr(e, "_stop_process_internal", lambda: noop())
     ok = await e.start(EngineConfig(model_path=Path(__file__)))
     assert not ok and tried == [True], "an out-of-memory failure is not a flag problem"
+
+
+def test_thinking_is_capped_by_default_and_the_cap_can_be_lifted():
+    assert pairs(build_command(cfg(), EXE))["--reasoning-budget"] == "768"
+    assert pairs(build_command(cfg(reasoning_budget=256), EXE))["--reasoning-budget"] == "256"
+    assert "--reasoning-budget" not in build_command(cfg(reasoning_budget=-1), EXE), "-1 means no limit"
+    assert pairs(build_command(cfg(reasoning_budget=0), EXE))["--reasoning-budget"] == "0"
+    with pytest.raises(Exception):
+        cfg(reasoning_budget=-5)

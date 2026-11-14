@@ -64,6 +64,8 @@ def build_command(config: EngineConfig, exe_path: Path) -> list[str]:
         cmd += ["-ctk", config.kv_cache_type, "-ctv", config.kv_cache_type]
     if config.speculation:
         cmd += ["--spec-type", "ngram-mod"]
+    if config.reasoning_budget >= 0:
+        cmd += ["--reasoning-budget", str(config.reasoning_budget)]
     return cmd
 
 
@@ -153,6 +155,7 @@ class LlamaServerEngine(InferenceEngine):
         self._cancel_requested = False
         self._hung = False
         self._last_activity = time.monotonic()  # last output line or CPU use of llama-server
+        self._last_timings: dict = {}
 
         # Per-process API key for llama-server (passed via the LLAMA_API_KEY environment
         # variable, never argv), so other local processes cannot use the engine port.
@@ -281,6 +284,17 @@ class LlamaServerEngine(InferenceEngine):
             self._error_message = f"Failed to start model '{config.model_path.name}': {fail_msg}"
             logger.error(self._error_message)
             return False
+
+    def _record_timings(self, t: dict) -> None:
+        """Keep and log what llama-server reports for a finished request (its own clock, not ours)."""
+        self._last_timings = {
+            "prompt_n": int(t.get("prompt_n") or 0), "cache_n": int(t.get("cache_n") or 0),
+            "prompt_tps": float(t.get("prompt_per_second") or 0.0), "decode_n": int(t.get("predicted_n") or 0),
+            "decode_tps": float(t.get("predicted_per_second") or 0.0),
+        }
+        x = self._last_timings
+        logger.info("Request: %d prompt tokens read (%d reused from the cache) at %.0f tok/s; %d tokens generated at %.1f tok/s",
+                    x["prompt_n"], x["cache_n"], x["prompt_tps"], x["decode_n"], x["decode_tps"])
 
     def _rejected_a_flag(self) -> bool:
         """True if llama-server's output says it didn't understand a command-line option."""
@@ -572,6 +586,10 @@ class LlamaServerEngine(InferenceEngine):
             port=self._config.port if self._config else None,
             error_message=self._error_message,
             active_tokens_per_sec=self._active_tokens_per_sec,
+            last_prompt_tokens=self._last_timings.get("prompt_n", 0),
+            last_cached_tokens=self._last_timings.get("cache_n", 0),
+            last_prompt_tps=self._last_timings.get("prompt_tps", 0.0),
+            last_decode_tps=self._last_timings.get("decode_tps", 0.0),
         )
 
     async def stream_chat(self, request: ChatCompletionRequest) -> AsyncIterator[ChatChunk]:
@@ -637,6 +655,8 @@ class LlamaServerEngine(InferenceEngine):
 
                         try:
                             chunk_json = json.loads(data_str)
+                            if chunk_json.get("timings"):
+                                self._record_timings(chunk_json["timings"])
                             choices = chunk_json.get("choices", [])
                             if not choices:
                                 continue
