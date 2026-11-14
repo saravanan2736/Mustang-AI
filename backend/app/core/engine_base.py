@@ -20,12 +20,24 @@ class EngineState(str, Enum):
     ERROR = "ERROR"
 
 
+ALL_LAYERS = 99  # "all" in the UI: with this value llama.cpp's --fit chooses how many layers really fit
+
+
 class EngineConfig(BaseModel):
     model_path: Path
-    n_gpu_layers: int = Field(default=99, ge=0)
+    # ALL_LAYERS (the default) means "as many as fit": llama-server's --fit puts every layer on the GPU when
+    # there is room and moves the rest to the CPU when there isn't, instead of failing to load. Any smaller
+    # number is an exact layer count chosen by the user.
+    n_gpu_layers: int = Field(default=ALL_LAYERS, ge=0)
     n_ctx: int = Field(default=4096, ge=512, le=65536)
     n_batch: int = Field(default=512, ge=128, le=4096)
     flash_attention: bool = True
+    # N-gram speculative decoding: guesses the next tokens from text already in the prompt and checks them in
+    # one pass. Output is identical; rewriting a file the model has just read is 6-7x faster (measured).
+    speculation: bool = True
+    # KV cache precision. f16 is exact; q8_0 saves memory (about 100-200 MB on the models tested at 16k-32k) but
+    # changes the output slightly, so it is an option, not the default. Quantized V cache needs flash attention.
+    kv_cache_type: Literal["f16", "q8_0"] = "f16"
     port: int = 18080
     host: str = "127.0.0.1"
 
@@ -101,6 +113,10 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int = Field(default=2048, ge=1, le=16384)
     repeat_penalty: float = Field(default=1.1, ge=0.0, le=2.0)
     stream: bool = True
+    # Reasoning models think before they answer. "auto": the model's own default for chat, off while the agent
+    # works (measured on the 9B: 1.3 s instead of 2.0 s per tool call with the same accuracy, and a simple question
+    # that used all 1,200 tokens on thinking and never answered took 1 s with thinking off).
+    thinking: Literal["auto", "on", "off"] = "auto"
     tools: list[Tool] | None = Field(default=None, max_length=64)
     tool_choice: Literal["auto", "none", "required"] | dict[str, Any] | None = None
 

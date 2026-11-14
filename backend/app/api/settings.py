@@ -4,6 +4,8 @@ Persistent user preferences, sampling parameters, and generation configuration.
 """
 
 import logging
+from typing import Literal
+
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
@@ -23,6 +25,7 @@ class AppSettingsSchema(BaseModel):
     context_size: int = Field(default=4096, ge=512, le=65536)
     default_profile: str = "default"
     custom_system_prompt: str = ""
+    thinking: Literal["auto", "on", "off"] = "auto"
 
 
 @router.get("", response_model=AppSettingsSchema)
@@ -42,6 +45,7 @@ async def get_settings():
             context_size=int(d.get("context_size", app_cfg.DEFAULT_CONTEXT_SIZE)),
             default_profile=d.get("default_profile", "default"),
             custom_system_prompt=d.get("custom_system_prompt", ""),
+            thinking=d.get("thinking", "auto") if d.get("thinking", "auto") in ("auto", "on", "off") else "auto",
         )
     finally:
         await db.close()
@@ -61,6 +65,7 @@ async def update_settings(new_settings: AppSettingsSchema):
             ("context_size", str(new_settings.context_size)),
             ("default_profile", new_settings.default_profile),
             ("custom_system_prompt", new_settings.custom_system_prompt),
+            ("thinking", new_settings.thinking),
         ]
         for k, v in items:
             await db.execute(

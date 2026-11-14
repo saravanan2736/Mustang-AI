@@ -88,6 +88,7 @@ export default function App() {
     context_size: 4096,
     default_profile: "default",
     custom_system_prompt: "",
+    thinking: "auto",
   });
 
   const {

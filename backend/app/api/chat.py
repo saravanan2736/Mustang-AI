@@ -9,7 +9,7 @@ import json
 import logging
 import time
 import uuid
-from typing import AsyncIterator
+from typing import AsyncIterator, Literal
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -60,6 +60,7 @@ class RegenerateRequest(BaseModel):
     top_k: int = Field(default=40, ge=1, le=200)
     max_tokens: int = Field(default=2048, ge=1, le=16384)
     repeat_penalty: float = Field(default=1.1, ge=0.0, le=2.0)
+    thinking: Literal["auto", "on", "off"] = "auto"
     agent: AgentOptions | None = None
 
 
@@ -475,6 +476,7 @@ async def regenerate_response(
         top_k=regen_req.top_k,
         max_tokens=regen_req.max_tokens,
         repeat_penalty=regen_req.repeat_penalty,
+        thinking=regen_req.thinking,
         stream=True,
     )
 

@@ -182,6 +182,8 @@ export interface AppSettings {
   context_size: number;
   default_profile: string;
   custom_system_prompt: string;
+  /** "auto": the model's own behaviour in chat, no thinking while the agent works. */
+  thinking: "auto" | "on" | "off";
 }
 
 export interface LibraryModel {

@@ -21,6 +21,7 @@ import httpx
 from app.config import settings
 from app.core.history import fit_messages
 from app.core.engine_base import (
+    ALL_LAYERS,
     ChatChunk,
     ChatCompletionRequest,
     ChatMessage,
@@ -36,6 +37,34 @@ logger = logging.getLogger("mustang.engine.llama")
 
 # No console window for llama-server (the packaged desktop app has no console).
 _CREATE_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+
+def build_command(config: EngineConfig, exe_path: Path) -> list[str]:
+    """The llama-server command line for a config (no shell; every value is a separate argument)."""
+    cmd = [
+        str(exe_path),
+        "-m", str(config.model_path),
+        "-c", str(config.n_ctx),
+        "-b", str(config.n_batch),
+        "-np", "1",      # one user, one slot: the default of several slots costs memory and splits the cache
+        "--host", config.host,
+        "--port", str(config.port),
+        "--no-webui",    # the engine port serves the API only
+        "--offline",     # never fetch models or other data from the network
+        "--no-agent",    # keep llama-server's own experimental tools (shell, file write) off
+        "-v",            # the app reads the GPU-layer and memory lines this prints
+    ]
+    if config.n_gpu_layers >= ALL_LAYERS:
+        cmd += ["-fit", "on"]  # no -ngl: layers that don't fit in video memory go to the CPU instead of failing
+    else:
+        cmd += ["-ngl", str(config.n_gpu_layers)]
+    if config.flash_attention or config.kv_cache_type != "f16":
+        cmd += ["--flash-attn", "on"]
+    if config.kv_cache_type != "f16":
+        cmd += ["-ctk", config.kv_cache_type, "-ctv", config.kv_cache_type]
+    if config.speculation:
+        cmd += ["--spec-type", "ngram-mod"]
+    return cmd
 
 
 def _wire_message(m: ChatMessage) -> dict:
@@ -204,6 +233,12 @@ class LlamaServerEngine(InferenceEngine):
 
         # Step 6 & 7: Spawn new process and wait for readiness
         success = await self._spawn_and_verify(config)
+        if not success and config.speculation and self._rejected_a_flag():
+            # A custom runtime that doesn't know speculative decoding: run without it rather than not at all.
+            logger.warning("llama-server rejected a speculation flag; starting again without speculative decoding")
+            await self._stop_process_internal()
+            config = config.model_copy(update={"speculation": False})
+            success = await self._spawn_and_verify(config)
         if success:
             self._config = config
             self._state = EngineState.READY
@@ -247,6 +282,11 @@ class LlamaServerEngine(InferenceEngine):
             logger.error(self._error_message)
             return False
 
+    def _rejected_a_flag(self) -> bool:
+        """True if llama-server's output says it didn't understand a command-line option."""
+        text = "\n".join(self._stderr_buffer).lower()
+        return "invalid argument" in text or "unknown argument" in text or "unrecognized" in text
+
     async def _spawn_and_verify(self, config: EngineConfig) -> bool:
         """Executes llama-server and waits for /health readiness probe."""
         self._state = EngineState.STARTING
@@ -262,22 +302,7 @@ class LlamaServerEngine(InferenceEngine):
             self._error_message = str(e)
             return False
 
-        # Build command with strict typed arguments (shell=False)
-        cmd = [
-            str(exe_path),
-            "-m", str(config.model_path),
-            "-c", str(config.n_ctx),
-            "-ngl", str(config.n_gpu_layers),
-            "-b", str(config.n_batch),
-            "--host", config.host,
-            "--port", str(config.port),
-            "--no-webui",   # the engine port serves the API only
-            "--offline",    # never fetch models or other data from the network
-            "--no-agent",   # keep llama-server's own experimental tools (shell, file write) off
-            "-v",
-        ]
-        if config.flash_attention:
-            cmd.extend(["--flash-attn", "on"])
+        cmd = build_command(config, exe_path)  # strict typed arguments (shell=False)
 
         logger.info(f"Spawning llama-server: {' '.join(cmd)}")
 
@@ -576,6 +601,8 @@ class LlamaServerEngine(InferenceEngine):
                 "repeat_penalty": request.repeat_penalty,
                 "stream": True,
             }
+            if request.thinking != "auto":
+                payload["chat_template_kwargs"] = {"enable_thinking": request.thinking == "on"}
             if wire_tools:
                 payload["tools"] = wire_tools
             if request.tool_choice is not None:

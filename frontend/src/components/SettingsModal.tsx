@@ -32,6 +32,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     context_size: 4096,
     default_profile: "default",
     custom_system_prompt: "",
+    thinking: "auto",
   });
   const [profiles, setProfiles] = useState<AssistantProfile[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -85,6 +86,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       context_size: 4096,
       default_profile: "default",
       custom_system_prompt: "",
+      thinking: "auto",
     });
   };
 
@@ -267,6 +269,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 />
                 <p className="text-xs text-muted mt-2">
                   Penalizes repetitive vocabulary patterns. 1.0 is neutral, 1.1 - 1.15 recommended.
+                </p>
+              </div>
+
+              {/* Thinking */}
+              <div className="rounded-xl bg-panel/50 border border-line/50 p-4">
+                <div className="flex justify-between text-xs mb-2">
+                  <span className="text-fg font-medium">Thinking (reasoning models)</span>
+                </div>
+                <div className="flex gap-1.5" role="radiogroup" aria-label="Thinking">
+                  {([
+                    ["auto", "Auto"],
+                    ["off", "Off (faster)"],
+                    ["on", "Always on"],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      role="radio"
+                      aria-checked={settings.thinking === value}
+                      onClick={() => setSettings({ ...settings, thinking: value })}
+                      className={`h-8 px-3 rounded-lg text-xs font-medium border transition-colors ${
+                        settings.thinking === value
+                          ? "bg-accent/15 border-accent/40 text-link"
+                          : "border-line text-muted hover:text-fg hover:bg-raised"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs text-muted mt-2">
+                  Auto lets the model think in normal chat and turns thinking off while the agent works, which is
+                  faster and just as accurate for tool calls. Thinking uses up the reply length: a model can use all
+                  of it on thinking and never answer, so use Off for quick answers on small GPUs.
                 </p>
               </div>
 

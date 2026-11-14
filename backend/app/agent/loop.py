@@ -239,6 +239,8 @@ async def run_agent(
             req = request.model_copy(update={  # own copy of the list: a sent request never changes
                 "messages": list(messages), "tools": tools, "tool_choice": "none" if final_turn else "auto",
                 "max_tokens": max(request.max_tokens, AGENT_MIN_TOKENS),
+                # While the agent works, "auto" means no thinking: faster, same accuracy (see engine_base).
+                "thinking": "off" if request.thinking == "auto" else request.thinking,
             })
             content: list[str] = []
             calls: list[ToolCall] = []

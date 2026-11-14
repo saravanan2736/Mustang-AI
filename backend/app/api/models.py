@@ -6,7 +6,7 @@ and dynamic model load/unload.
 
 import asyncio
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
@@ -70,10 +70,12 @@ class ModelLibraryItem(BaseModel):
 
 class ModelLoadRequest(BaseModel):
     model_name: str
-    n_gpu_layers: int = Field(default=99, ge=0, le=256)
+    n_gpu_layers: int = Field(default=99, ge=0, le=256)  # 99 = as many as fit (see EngineConfig)
     n_ctx: int = Field(default=4096, ge=512, le=65536)
     n_batch: int = Field(default=512, ge=128, le=4096)
     flash_attention: bool = True
+    speculation: bool = True
+    kv_cache_type: Literal["f16", "q8_0"] = "f16"
 
 
 # --- Model Library Endpoints (Milestone 3) ---
@@ -365,6 +367,8 @@ async def load_model(
         n_ctx=req.n_ctx,
         n_batch=req.n_batch,
         flash_attention=req.flash_attention,
+        speculation=req.speculation,
+        kv_cache_type=req.kv_cache_type,
         port=settings.ENGINE_PORT,
         host=settings.ENGINE_HOST,
     )
