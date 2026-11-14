@@ -271,15 +271,13 @@ async def _handler(args: dict, ctx: ToolContext) -> Proposal:
 register(ToolSpec(
     name=COMMAND_TOOL,
     description=("Run one Windows PowerShell 5.1 command and get its output and exit code. It runs INSIDE `folder` "
-                 "(default: the workspace top), so paths in the command are relative to that folder. Chain with ; or "
-                 "&& (converted for you); programs in the current folder run by name (fizzbuzz.exe) or ./name. "
-                 "The user sees the exact command and must approve every run. Use it for builds, tests, git and "
-                 "scripts; use the file tools (not the shell) to read or write files. Keep commands short and "
-                 "non-interactive. System-level commands are refused."),
+                 "(default: workspace top), so paths in the command are relative to it. && works; programs in the "
+                 "folder run by name. The user approves every run. For builds, tests, git and scripts, not for "
+                 "reading or writing files. System-level commands are refused."),
     parameters={"type": "object", "properties": {
-        "command": {"type": "string", "description": "The PowerShell command line to run"},
-        "folder": {"type": "string", "description": "Folder inside the workspace to run in; '.' (default) is the top"},
-        "timeout_seconds": {"type": "integer", "description": f"Stop it after this many seconds (default {DEFAULT_TIMEOUT_S}, max {MAX_TIMEOUT_S})",
+        "command": {"type": "string", "description": "PowerShell command line"},
+        "folder": {"type": "string", "description": "Folder to run in (default '.')"},
+        "timeout_seconds": {"type": "integer", "description": f"Stop after this many seconds (default {DEFAULT_TIMEOUT_S}, max {MAX_TIMEOUT_S})",
                             "minimum": 1, "maximum": MAX_TIMEOUT_S},
     }, "required": ["command"]},
     handler=_handler,

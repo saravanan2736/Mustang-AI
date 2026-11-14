@@ -11,7 +11,7 @@ Everything after `--` goes to llama-server as is. Workloads (all with a fixed se
   decode   short prompt, 256 tokens out, thinking off: generation speed
   prefill  a ~5k-token prompt, then the same prompt again: prompt speed and prompt-cache reuse
   edit     rewrite a 150-line file with one rename: code-like decoding (speculative decoding helps here)
-  tools    the app's real tool list and agent prompt, 10 requests: is the right tool called with valid
+  tools    the app's real tool list and agent prompt, 21 requests: is the right tool called with valid
            arguments, how many prompt tokens the tool list costs, and how long a call takes
 Use --think on|off to run the chat workloads with the model's reasoning on or off.
 """
@@ -133,17 +133,29 @@ def w_edit(s: Server, think) -> dict:
     return {**timings(d), "renamed": "process_seven" in text and "handler_7" not in text, "out_chars": len(text)}
 
 
+# (request, tools that count as right). Editing may start with reading the file, which is what we tell the model to do.
 TOOL_CASES = [
-    ("What time is it right now?", "get_current_time"),
-    ("List the files in the workspace.", "list_files"),
-    ("Find every .py file in the project.", "find_files"),
-    ("Search the project for the word 'timeout'.", "search_files"),
-    ("Show me what README.md says.", "read_file"),
-    ("Create a file called hello.txt containing the text hi.", "create_file"),
-    ("What is 17 * 23 + 4?", "calculator"),
-    ("Run the tests with python -m unittest.", "run_command"),
-    ("Make a plan with update_tasks: first read the code, then fix the bug, then run the tests.", "update_tasks"),
-    ("Change 'Buy milk' to 'Buy oat milk' in notes.txt.", "edit_file"),
+    ("What time is it right now?", {"get_current_time"}),
+    ("What day of the week is it today?", {"get_current_time"}),
+    ("List the files in the workspace.", {"list_files"}),
+    ("What is inside the src folder?", {"list_files"}),
+    ("Find every .py file in the project.", {"find_files"}),
+    ("Where is the file called Config.h?", {"find_files"}),
+    ("Search the project for the word 'timeout'.", {"search_files"}),
+    ("Which files mention run_app?", {"search_files"}),
+    ("Show me what README.md says.", {"read_file"}),
+    ("Open calc/ops.py and show it to me.", {"read_file"}),
+    ("Create a file called hello.txt containing the text hi.", {"create_file"}),
+    ("Write a file notes.md with a short todo list for today.", {"create_file"}),
+    ("What is 17 * 23 + 4?", {"calculator"}),
+    ("Compute the square root of 2025.", {"calculator"}),
+    ("Run the tests with python -m unittest.", {"run_command"}),
+    ("Run git status.", {"run_command"}),
+    ("Make a plan with update_tasks: first read the code, then fix the bug, then run the tests.", {"update_tasks"}),
+    ("Break this job into steps and track them: add tests, fix the bug, update the docs.", {"update_tasks"}),
+    ("Change 'Buy milk' to 'Buy oat milk' in notes.txt.", {"edit_file", "read_file"}),
+    ("Rename the variable total to amount in app.py.", {"edit_file", "read_file"}),
+    ("What did I tell you earlier in this chat about my cat?", {"search_history"}),
 ]
 
 
@@ -168,16 +180,17 @@ def w_tools(s: Server, think) -> dict:
         secs.append(d["_secs"])
         calls = d["choices"][0]["message"].get("tool_calls") or []
         names = [c["function"]["name"] for c in calls]
-        if expected in names:
+        hit = next((n for n in names if n in expected), None)
+        if hit:
             ok_tool += 1
-            call = next(c for c in calls if c["function"]["name"] == expected)
+            call = next(c for c in calls if c["function"]["name"] == hit)
             try:
-                validate_arguments(by_name[expected], call["function"]["arguments"])
+                validate_arguments(by_name[hit], call["function"]["arguments"])
                 ok_args += 1
             except ToolError as e:
-                wrong.append(f"{expected}: bad args ({e})")
+                wrong.append(f"{hit}: bad args ({e})")
         else:
-            wrong.append(f"{expected}: got {names or 'no call'}")
+            wrong.append(f"{'/'.join(sorted(expected))}: got {names or 'no call'} for {prompt[:40]!r}")
     return {"tool_tokens_plus_prompt": prompt_tokens, "right_tool": f"{ok_tool}/{len(TOOL_CASES)}", "valid_args": f"{ok_args}/{len(TOOL_CASES)}",
             "avg_secs": round(sum(secs) / len(secs), 2), "total_secs": round(sum(secs), 1), "misses": wrong}
 

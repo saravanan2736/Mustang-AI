@@ -96,13 +96,12 @@ async def _update_tasks(args: dict, ctx: ToolContext) -> str:
 
 register(ToolSpec(
     name="update_tasks",
-    description=("Write or update your task list for work with several steps. Send the whole list every time: each "
-                 "item has text and a status (pending, in_progress, done). Write the plan first, keep exactly one "
-                 "item in_progress, and mark items done as you finish them. Skip it for simple questions."),
+    description=("Write or update your task list for multi-step work. Send the whole list each time; plan first, "
+                 "keep one item in_progress, mark items done as you finish."),
     parameters={"type": "object", "properties": {
-        "tasks": {"type": "array", "maxItems": MAX_TASKS, "description": "The full task list, in order",
+        "tasks": {"type": "array", "maxItems": MAX_TASKS, "description": "The full list",
                   "items": {"type": "object", "properties": {
-                      "text": {"type": "string", "description": "What to do, in a few words"},
+                      "text": {"type": "string", "description": "What to do, briefly"},
                       "status": {"type": "string", "enum": list(STATUSES)},
                   }, "required": ["text", "status"]}},
     }, "required": ["tasks"]},

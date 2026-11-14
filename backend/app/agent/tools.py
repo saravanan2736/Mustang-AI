@@ -56,7 +56,7 @@ async def _current_time(args: dict, ctx: ToolContext) -> str:
 
 register(ToolSpec(
     name="get_current_time",
-    description="Get the current local date, time and weekday on the user's computer.",
+    description="Get the current local date, time and weekday.",
     parameters=_obj({}),
     handler=_current_time,
 ))
@@ -137,8 +137,8 @@ async def _calculator(args: dict, ctx: ToolContext) -> str:
 
 register(ToolSpec(
     name="calculator",
-    description="Evaluate an arithmetic expression exactly, e.g. (17+25)/3, 15/100*240, sqrt(2), 2**10.",
-    parameters=_obj({"expression": {"type": "string", "description": "The arithmetic expression"}}, ["expression"]),
+    description="Evaluate an arithmetic expression exactly, e.g. (17+25)/3, sqrt(2), 2**10.",
+    parameters=_obj({"expression": {"type": "string", "description": "The expression"}}, ["expression"]),
     handler=_calculator,
     max_string=200,
 ))
@@ -399,11 +399,10 @@ async def _in_thread(fn, *args):
 
 register(ToolSpec(
     name="list_files",
-    description=("List the files and folders in a folder of the user's workspace. Use depth 2-4 to see a project's "
-                 "structure in one call."),
+    description="List the files and folders in a workspace folder; depth 2-4 shows the project structure.",
     parameters=_obj({
-        "path": {"type": "string", "description": "Folder relative to the workspace; '.' for the top"},
-        "depth": {"type": "integer", "description": "Levels to show (default 1, at most 4)", "minimum": 1, "maximum": 4},
+        "path": {"type": "string", "description": "Folder; '.' is the workspace top"},
+        "depth": {"type": "integer", "description": "Levels (default 1, max 4)", "minimum": 1, "maximum": 4},
     }, ["path"]),
     handler=lambda a, c: _in_thread(_list_files, a["path"], c, a.get("depth") or 1),
     needs_workspace=True,
@@ -411,13 +410,12 @@ register(ToolSpec(
 
 register(ToolSpec(
     name="read_file",
-    description=("Read a text file from the user's workspace. A long file comes back in parts of about 8,000 "
-                 "characters with a note saying where to continue; pass start_line and end_line to read a "
-                 "specific range."),
+    description=("Read a text file from the workspace. Long files come in parts with a note on where to continue; "
+                 "start_line and end_line read a range."),
     parameters=_obj({
-        "path": {"type": "string", "description": "File path relative to the workspace, e.g. notes.txt"},
-        "start_line": {"type": "integer", "description": "First line to read (1 = the top). Optional."},
-        "end_line": {"type": "integer", "description": "Last line to read. Optional."},
+        "path": {"type": "string", "description": "File path, e.g. notes.txt"},
+        "start_line": {"type": "integer", "description": "First line (1 = top)"},
+        "end_line": {"type": "integer", "description": "Last line"},
     }, ["path"]),
     handler=lambda a, c: _in_thread(_read_file, a["path"], c, a.get("start_line"), a.get("end_line")),
     needs_workspace=True,
@@ -425,13 +423,12 @@ register(ToolSpec(
 
 register(ToolSpec(
     name="search_files",
-    description=("Search the text inside the files of the user's workspace for a word, phrase or regular expression "
-                 "(case-insensitive). Returns file:line: text. Use file_pattern to look only in some files, e.g. *.cpp."),
+    description="Search the text inside workspace files (case-insensitive); returns file:line: text.",
     parameters=_obj({
-        "query": {"type": "string", "description": "Text to look for"},
-        "path": {"type": "string", "description": "Folder to search, relative to the workspace; '.' for all"},
-        "file_pattern": {"type": "string", "description": "Only files whose name matches, e.g. *.py or src/**/*.h"},
-        "regex": {"type": "boolean", "description": "Treat query as a regular expression (default false)"},
+        "query": {"type": "string", "description": "Text to find"},
+        "path": {"type": "string", "description": "Folder to search; '.' = all"},
+        "file_pattern": {"type": "string", "description": "Only files matching, e.g. *.py"},
+        "regex": {"type": "boolean", "description": "query is a regular expression"},
     }, ["query"]),
     handler=lambda a, c: _in_thread(_search_text, a["query"], a.get("path", "."), c, a.get("file_pattern"), bool(a.get("regex"))),
     needs_workspace=True,
@@ -441,11 +438,11 @@ register(ToolSpec(
 
 register(ToolSpec(
     name="find_files",
-    description=("Find files by NAME anywhere in the workspace with a glob pattern, e.g. *.py, Config*.h or "
-                 "src/**/test_*.cpp (case-insensitive; ** crosses folders). To look inside files use search_files."),
+    description=("Find files by NAME with a glob, e.g. *.py or src/**/test_*.cpp (case-insensitive). "
+                 "To search inside files use search_files."),
     parameters=_obj({
-        "pattern": {"type": "string", "description": "Glob pattern for the file name or path"},
-        "path": {"type": "string", "description": "Folder to search in, relative to the workspace; '.' for all"},
+        "pattern": {"type": "string", "description": "Glob for the file name or path"},
+        "path": {"type": "string", "description": "Folder to search; '.' = all"},
     }, ["pattern"]),
     handler=lambda a, c: _in_thread(_find_files, a["pattern"], a.get("path", "."), c),
     needs_workspace=True,
@@ -659,11 +656,10 @@ def _prepare_edit(path: str, old_text: str, new_text: str, ctx: ToolContext):
 
 register(ToolSpec(
     name="create_file",
-    description=("Create a text file in the user's workspace (missing folders are created). If the file already "
-                 "exists its whole content is replaced; for a small change use edit_file. The user sees the "
-                 "content or diff and must approve it."),
+    description=("Create a text file (missing folders are made) or replace an existing one with the full content. "
+                 "The user approves it. For a small change use edit_file."),
     parameters=_obj({
-        "path": {"type": "string", "description": "New file path relative to the workspace, e.g. todo.md"},
+        "path": {"type": "string", "description": "File path, e.g. todo.md"},
         "content": {"type": "string", "description": "The full text of the file"},
     }, ["path", "content"]),
     handler=lambda a, c: _in_thread(_prepare_create, a["path"], a["content"], c),
@@ -675,13 +671,12 @@ register(ToolSpec(
 
 register(ToolSpec(
     name="edit_file",
-    description=("Change a text file in the user's workspace by replacing one exact piece of text (old_text, "
-                 "which must appear exactly once) with new_text. Read the file first. The user sees the "
-                 "change and must approve it."),
+    description=("Replace one exact piece of text (old_text, must appear exactly once) in a workspace file with "
+                 "new_text. Read the file first. The user approves the change."),
     parameters=_obj({
-        "path": {"type": "string", "description": "File path relative to the workspace"},
+        "path": {"type": "string", "description": "File path"},
         "old_text": {"type": "string", "description": "Exact text to replace, copied from the file"},
-        "new_text": {"type": "string", "description": "Replacement text (may be empty to remove old_text)"},
+        "new_text": {"type": "string", "description": "Replacement (may be empty to remove)"},
     }, ["path", "old_text", "new_text"]),
     handler=lambda a, c: _in_thread(_prepare_edit, a["path"], a["old_text"], a["new_text"], c),
     needs_workspace=True,
