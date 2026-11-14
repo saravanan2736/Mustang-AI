@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Send, Square, CornerDownLeft } from "lucide-react";
+import { ArrowUp, Square } from "lucide-react";
 
 interface PromptInputProps {
   onSend: (prompt: string) => void;
@@ -9,112 +9,100 @@ interface PromptInputProps {
   placeholder?: string;
   externalPrompt?: string;
   onExternalPromptConsumed?: () => void;
+  /** Controls shown along the bottom of the box (agent mode, folder). */
+  toolbar?: React.ReactNode;
 }
 
+/** The prompt card: text, a toolbar row, and the send / stop button. */
 export const PromptInput: React.FC<PromptInputProps> = ({
   onSend,
   onStop,
   isGenerating,
   disabled,
-  placeholder = "Message your local model...",
+  placeholder = "Ask anything…",
   externalPrompt,
   onExternalPromptConsumed,
+  toolbar,
 }) => {
   const [prompt, setPrompt] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Consume external prompt if populated (e.g. from suggestion card)
   useEffect(() => {
     if (externalPrompt) {
       setPrompt(externalPrompt);
       onExternalPromptConsumed?.();
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-      }
+      textareaRef.current?.focus();
     }
   }, [externalPrompt, onExternalPromptConsumed]);
 
-  // Auto-resize textarea height
   useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
+    const el = textareaRef.current;
+    if (el) {
+      el.style.height = "auto";
+      el.style.height = `${Math.min(el.scrollHeight, 220)}px`;
     }
   }, [prompt]);
 
   useEffect(() => {
-    if (!disabled && textareaRef.current) {
-      textareaRef.current.focus();
-    }
+    if (!disabled) textareaRef.current?.focus();
   }, [disabled]);
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      if (!isGenerating && prompt.trim() && !disabled) {
-        onSend(prompt);
-        setPrompt("");
-      }
-    }
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isGenerating) {
-      onStop();
-    } else if (prompt.trim() && !disabled) {
+  const send = () => {
+    if (!isGenerating && prompt.trim() && !disabled) {
       onSend(prompt);
       setPrompt("");
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="relative bg-[#0C101C] border border-white/[0.08] focus-within:border-indigo-500/50 rounded-2xl p-2.5 shadow-xl transition">
-      <textarea
-        ref={textareaRef}
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        onKeyDown={handleKeyDown}
-        disabled={disabled}
-        placeholder={disabled ? "Load a model in the header above to begin chatting..." : placeholder}
-        rows={1}
-        className="w-full bg-transparent text-sm text-slate-100 placeholder-slate-500 focus:outline-none resize-none px-2 py-1 pr-16 leading-relaxed disabled:opacity-40 max-h-[180px]"
-      />
-
-      {/* Bottom Bar inside input container */}
-      <div className="flex items-center justify-between pt-1 px-2 select-none border-t border-white/[0.04]">
-        <div className="flex items-center gap-2 text-[11px] text-slate-400">
-          <span className="flex items-center gap-1">
-            <CornerDownLeft className="w-3 h-3" />
-            <span>Enter to send</span>
-          </span>
-          <span>•</span>
-          <span>Shift+Enter for newline</span>
-        </div>
-
-        <div>
-          {isGenerating ? (
-            <button
-              type="button"
-              onClick={onStop}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold shadow-md transition"
-              title="Stop generation"
-            >
-              <Square className="w-3 h-3 fill-current" />
-              <span>Stop</span>
-            </button>
-          ) : (
-            <button
-              type="submit"
-              disabled={disabled || !prompt.trim()}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-indigo-glow transition disabled:opacity-25 disabled:hover:bg-indigo-600"
-              title="Send prompt"
-            >
-              <span>Send</span>
-              <Send className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (isGenerating) onStop();
+        else send();
+      }}
+      className="rounded-2xl bg-panel border border-line focus-within:border-accent transition-colors"
+    >
+      <div className="px-4 pt-3.5">
+        <textarea
+          ref={textareaRef}
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          disabled={disabled}
+          placeholder={placeholder}
+          rows={1}
+          className="w-full bg-transparent text-[14px] text-fg placeholder:text-subtle focus:outline-none resize-none py-0.5 leading-relaxed disabled:opacity-50 max-h-[220px]"
+        />
+      </div>
+      <div className="flex items-center gap-2 px-3 pb-3 pt-2">
+        <div className="flex-1 min-w-0 flex flex-wrap items-center gap-1.5">{toolbar}</div>
+        {isGenerating ? (
+          <button
+            type="button"
+            onClick={onStop}
+            className="h-8 px-3.5 flex items-center gap-1.5 rounded-full bg-raised border border-line text-[13px] font-medium text-fg hover:bg-line transition-colors"
+            title="Stop generating"
+          >
+            <Square className="w-3 h-3 fill-current" />
+            <span>Stop</span>
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={disabled || !prompt.trim()}
+            className="h-8 w-8 flex items-center justify-center rounded-full bg-accent text-white hover:bg-accent-hover transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+            title="Send (Enter)"
+            aria-label="Send"
+          >
+            <ArrowUp className="w-4 h-4 stroke-[2.5]" />
+          </button>
+        )}
       </div>
     </form>
   );

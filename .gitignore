@@ -31,3 +31,8 @@ backend/run/temp_*
 
 # Desktop runtime build output and download cache (scripts/build_desktop_runtime.py)
 build/
+
+# Database backups made by schema migrations (contain user data in real installs)
+backend/run/backups/
+# Scratch folder for live agent tests
+_live_test/

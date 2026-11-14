@@ -28,7 +28,9 @@ if "MUSTANG_RUN_DIR" not in os.environ:
 _REAL_MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 if "MUSTANG_MODELS_DIR" not in os.environ:
     _test_models_dir = Path(tempfile.mkdtemp(prefix=".mustang-test-models-", dir=_REAL_MODELS_DIR.parent))
-    for _gguf in _REAL_MODELS_DIR.glob("*.gguf"):
+    # Only the small test model: the tests scan this folder, and parsing every multi-GB model the
+    # user keeps in models/ made each scan take minutes.
+    for _gguf in _REAL_MODELS_DIR.glob("qwen2.5-0.5b-instruct-q4_k_m.gguf"):
         try:
             os.link(_gguf, _test_models_dir / _gguf.name)
         except OSError:
@@ -85,3 +87,62 @@ async def anon_client(mock_engine):
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://127.0.0.1:18000") as client:
         yield client
+
+
+class ScriptedEngine:
+    """
+    Fake engine for agent-mode tests (M5 Phase C): plays a fixed list of model turns and records
+    every request. A turn is {"text": "..."} or {"calls": [(name, arguments_json), ...]}; when the
+    script runs out it answers "done".
+    """
+
+    def __init__(self, script):
+        from app.core.engine_base import EngineState
+
+        self.script = list(script)
+        self.requests = []
+        self.cancelled = 0
+        self.state = EngineState.READY
+
+    async def start(self, config):
+        return True
+
+    async def stop(self):
+        return True
+
+    async def get_status(self):
+        from app.core.engine_base import EngineState, EngineStatus
+
+        return EngineStatus(state=EngineState.READY, model_name="scripted.gguf")
+
+    async def cancel_generation(self):
+        self.cancelled += 1
+        return True
+
+    async def stream_chat(self, request):
+        from app.core.engine_base import ChatChunk, ToolCall, ToolCallFunction
+
+        self.requests.append(request)
+        turn = self.script.pop(0) if self.script else {"text": "done"}
+        if turn.get("thinking"):
+            yield ChatChunk(id="s", model="scripted.gguf", delta_reasoning=turn["thinking"])
+        if turn.get("text"):
+            yield ChatChunk(id="s", model="scripted.gguf", delta_content=turn["text"])
+        calls = turn.get("calls")
+        if calls and request.tool_choice != "none":
+            yield ChatChunk(id="s", model="scripted.gguf", finish_reason="tool_calls", tool_calls=[
+                ToolCall(id=f"call_{len(self.requests)}_{i}", function=ToolCallFunction(name=n, arguments=a))
+                for i, (n, a) in enumerate(calls)])
+        else:
+            yield ChatChunk(id="s", model="scripted.gguf", finish_reason="stop")
+
+
+@pytest.fixture
+def scripted_engine():
+    """Factory: scripted_engine([...turns]) installs a ScriptedEngine as the app's engine."""
+    def make(script):
+        engine = ScriptedEngine(script)
+        set_engine_instance(engine)
+        app.state.engine = engine
+        return engine
+    return make

@@ -9,6 +9,7 @@ fn main() {
             "desktop_settings",
             "set_close_to_tray",
             "choose_models_folder",
+            "choose_workspace_folder",
             "reset_models_folder",
             "open_folder",
             "open_external",

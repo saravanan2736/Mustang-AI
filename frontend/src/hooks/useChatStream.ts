@@ -1,6 +1,21 @@
 import { useState, useRef, useCallback } from "react";
 import { AppSettings, ChatMessage } from "../types";
 import { apiFetch, stopGeneration, truncateConversation } from "../services/api";
+import { AgentEvent, applyAgentEvent, historyForRequest } from "../services/agent";
+
+/** Agent mode for one request: the backend may run its built-in read-only tools. */
+export interface AgentRequestOptions {
+  workspace?: string | null;
+  /** The user chose "Approve all changes" in this chat: changes are written without waiting. */
+  autoApprove?: boolean;
+  /** Terminal is on for this chat: the model may propose commands (each one is approved). */
+  terminal?: boolean;
+}
+
+const agentBody = (agent?: AgentRequestOptions | null) =>
+  agent
+    ? { agent: { workspace: agent.workspace || null, auto_approve: Boolean(agent.autoApprove), terminal: Boolean(agent.terminal) } }
+    : {};
 
 export function useChatStream() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -77,6 +92,24 @@ export function useChatStream() {
               break;
             }
 
+            if (data.agent) {
+              const ev = data.agent as AgentEvent;
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantMessageId ? applyAgentEvent(m, ev) : m))
+              );
+            }
+
+            const thinking = data.choices?.[0]?.delta?.reasoning;
+            if (thinking) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMessageId
+                    ? { ...m, reasoning: ((m.reasoning ?? "") + thinking).slice(-20000) }
+                    : m
+                )
+              );
+            }
+
             const delta = data.choices?.[0]?.delta?.content;
             if (delta) {
               tokenCount += 1;
@@ -116,7 +149,8 @@ export function useChatStream() {
       prompt: string,
       conversationId: string | null,
       systemPrompt = "",
-      settings?: Partial<AppSettings>
+      settings?: Partial<AppSettings>,
+      agent?: AgentRequestOptions | null
     ) => {
       if (!prompt.trim() || isGenerating) return;
 
@@ -143,10 +177,7 @@ export function useChatStream() {
 
       setMessages((prev) => [...prev, userMsg, asstPlaceholder]);
 
-      const conversationHistory = [...messages, userMsg].map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      const conversationHistory = historyForRequest([...messages, userMsg]);
 
       if (systemPrompt.trim()) {
         conversationHistory.unshift({
@@ -166,6 +197,7 @@ export function useChatStream() {
           repeat_penalty: settings?.repeat_penalty ?? 1.1,
           max_tokens: settings?.max_tokens ?? 2048,
           stream: true,
+          ...agentBody(agent),
         },
         assistantMessageId
       );
@@ -176,7 +208,8 @@ export function useChatStream() {
   const regenerateResponse = useCallback(
     async (
       conversationId: string,
-      settings?: Partial<AppSettings>
+      settings?: Partial<AppSettings>,
+      agent?: AgentRequestOptions | null
     ) => {
       if (!conversationId || isGenerating) return;
 
@@ -211,6 +244,7 @@ export function useChatStream() {
           top_k: settings?.top_k ?? 40,
           repeat_penalty: settings?.repeat_penalty ?? 1.1,
           max_tokens: settings?.max_tokens ?? 2048,
+          ...agentBody(agent),
         },
         assistantMessageId
       );
@@ -224,7 +258,8 @@ export function useChatStream() {
       messageId: string,
       newPrompt: string,
       systemPrompt = "",
-      settings?: Partial<AppSettings>
+      settings?: Partial<AppSettings>,
+      agent?: AgentRequestOptions | null
     ) => {
       if (!newPrompt.trim() || isGenerating) return;
 
@@ -260,10 +295,7 @@ export function useChatStream() {
         created_at: Date.now() / 1000,
       }]);
 
-      const promptHistory = updatedHistory.map((m) => ({
-        role: m.role,
-        content: m.content,
-      }));
+      const promptHistory = historyForRequest(updatedHistory);
 
       if (systemPrompt.trim()) {
         promptHistory.unshift({
@@ -283,6 +315,7 @@ export function useChatStream() {
           repeat_penalty: settings?.repeat_penalty ?? 1.1,
           max_tokens: settings?.max_tokens ?? 2048,
           stream: true,
+          ...agentBody(agent),
         },
         assistantMessageId
       );

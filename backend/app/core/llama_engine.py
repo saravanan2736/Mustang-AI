@@ -19,6 +19,7 @@ from typing import AsyncIterator
 import httpx
 
 from app.config import settings
+from app.core.history import fit_messages
 from app.core.engine_base import (
     ChatChunk,
     ChatCompletionRequest,
@@ -121,6 +122,8 @@ class LlamaServerEngine(InferenceEngine):
         self._http: httpx.AsyncClient | None = None
         self._active_response: httpx.Response | None = None
         self._cancel_requested = False
+        self._hung = False
+        self._last_activity = time.monotonic()  # last output line or CPU use of llama-server
 
         # Per-process API key for llama-server (passed via the LLAMA_API_KEY environment
         # variable, never argv), so other local processes cannot use the engine port.
@@ -362,6 +365,7 @@ class LlamaServerEngine(InferenceEngine):
                 if not line:
                     continue
 
+                self._last_activity = time.monotonic()
                 self._stderr_buffer.append(line)
                 if len(self._stderr_buffer) > 200:
                     self._stderr_buffer.pop(0)
@@ -395,6 +399,7 @@ class LlamaServerEngine(InferenceEngine):
 
     async def _health_loop(self):
         """Periodic heartbeat confirming process and HTTP endpoint are responsive."""
+        unresponsive_since: float | None = None
         while self._state in (EngineState.READY, EngineState.GENERATING):
             await asyncio.sleep(settings.ENGINE_HEALTH_INTERVAL_SECONDS)
             if not self._process or self._process.returncode is not None:
@@ -409,8 +414,60 @@ class LlamaServerEngine(InferenceEngine):
                 resp = await self._http.get(f"http://{self._config.host}:{self._config.port}/health", timeout=1.5)
                 if resp.status_code != 200:
                     logger.warning(f"Healthcheck returned non-200: {resp.status_code}")
+                unresponsive_since = None
             except Exception as e:
                 logger.warning(f"Health probe error: {e}")
+                now = time.monotonic()
+                unresponsive_since = unresponsive_since or now
+                if self._process_is_working():
+                    # Reading a long prompt keeps llama-server too busy to answer /health, but it
+                    # writes output and uses the CPU. That is slow, not hung.
+                    continue
+                idle_for = now - max(unresponsive_since, self._last_activity)
+                if idle_for >= settings.ENGINE_HUNG_SECONDS:
+                    # Alive but silent: no health answer, no output and no CPU use (seen: GPU and CPU
+                    # idle for 18 minutes in the middle of a request). Waiting longer never helps.
+                    logger.error("llama-server has been silent for %.0f s; restarting it", idle_for)
+                    self._hung = True
+                    config = self._config
+                    try:
+                        self._process.kill()
+                    except ProcessLookupError:
+                        pass
+                    asyncio.create_task(self._recover_from_hang(config))
+                    break
+
+    def _process_is_working(self) -> bool:
+        """True if llama-server wrote output or used CPU since the last check."""
+        now = time.monotonic()
+        if now - self._last_activity < 10:
+            return True
+        try:
+            import psutil
+
+            cpu = sum(psutil.Process(self._process.pid).cpu_times()[:2])
+        except Exception:  # noqa: BLE001  (process gone or not inspectable: judge by output alone)
+            return False
+        last = getattr(self, "_last_cpu", None)
+        self._last_cpu = cpu
+        if last is not None and cpu - last > 0.5:
+            self._last_activity = now
+            return True
+        return False
+
+    async def _recover_from_hang(self, config: EngineConfig) -> None:
+        """Reload the model after a hang. The request that was running fails with a clear message."""
+        for _ in range(100):  # let the failed request finish first (up to 10 s)
+            if not self._gen_lock.locked():
+                break
+            await asyncio.sleep(0.1)
+        try:
+            ok = await self.start(config)
+        except Exception as e:  # noqa: BLE001
+            ok, self._error_message = False, f"The model engine stopped responding and could not be restarted: {e}"
+        if ok:
+            logger.info("llama-server restarted after a hang")
+        self._hung = False
 
     async def _stop_process_internal(self) -> bool:
         """Internal process termination helper called by lifecycle supervisor."""
@@ -505,9 +562,13 @@ class LlamaServerEngine(InferenceEngine):
             self._state = EngineState.GENERATING
             url = f"http://{self._config.host}:{self._config.port}/v1/chat/completions"
             
+            wire_tools = [t.model_dump(exclude_none=True) for t in request.tools] if request.tools else None
+            wire_messages, _ = fit_messages(
+                [_wire_message(m) for m in request.messages], self._config.n_ctx, request.max_tokens, wire_tools
+            )
             payload = {
                 "model": self._config.model_path.name,
-                "messages": [_wire_message(m) for m in request.messages],
+                "messages": wire_messages,
                 "temperature": request.temperature,
                 "top_p": request.top_p,
                 "top_k": request.top_k,
@@ -515,8 +576,8 @@ class LlamaServerEngine(InferenceEngine):
                 "repeat_penalty": request.repeat_penalty,
                 "stream": True,
             }
-            if request.tools:
-                payload["tools"] = [t.model_dump(exclude_none=True) for t in request.tools]
+            if wire_tools:
+                payload["tools"] = wire_tools
             if request.tool_choice is not None:
                 payload["tool_choice"] = request.tool_choice
             tool_calls = _ToolCallAssembler()
@@ -528,7 +589,10 @@ class LlamaServerEngine(InferenceEngine):
             try:
                 client = self._http
                 self._active_client = client
-                async with client.stream("POST", url, json=payload, headers=self._auth_headers()) as resp:
+                # No read timeout: a big model can be silent for minutes while it reads a long prompt or
+                # thinks. Stop cancels the stream, and a dead llama-server is caught by the health monitor.
+                async with client.stream("POST", url, json=payload, headers=self._auth_headers(),
+                                         timeout=httpx.Timeout(None, connect=10.0)) as resp:
                     self._active_response = resp
                     if resp.status_code != 200:
                         err_body = await resp.aread()
@@ -551,6 +615,7 @@ class LlamaServerEngine(InferenceEngine):
                                 continue
                             delta = choices[0].get("delta", {})
                             content = delta.get("content") or ""
+                            reasoning = delta.get("reasoning_content") or delta.get("reasoning") or ""
                             finish_reason = choices[0].get("finish_reason")
                             if delta.get("tool_calls"):
                                 tool_calls.add(delta["tool_calls"])
@@ -567,6 +632,7 @@ class LlamaServerEngine(InferenceEngine):
                                 id=chunk_json.get("id", "chunk"),
                                 model=self._config.model_path.name,
                                 delta_content=content,
+                                delta_reasoning=reasoning,
                                 finish_reason="tool_calls" if finished_calls else finish_reason,
                                 tool_calls=finished_calls,
                             )
@@ -580,6 +646,10 @@ class LlamaServerEngine(InferenceEngine):
                         yield ChatChunk(id="chunk", model=self._config.model_path.name, finish_reason="tool_calls", tool_calls=leftover)
             except Exception:
                 # Closing the upstream stream (cancel_generation) surfaces as a read error here.
+                if self._hung:
+                    raise RuntimeError(
+                        "The model engine stopped responding and is being restarted. Please send your message again in a moment."
+                    ) from None
                 if not self._cancel_requested:
                     raise
             finally:

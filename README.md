@@ -20,7 +20,8 @@ S:\Mustang AI\
 │   │   ├── main.py                  # FastAPI application with lifespan management
 │   │   ├── config.py                # Loopback networking and security settings
 │   │   ├── api\                     # System, Auth, Models, Chat, OpenAI endpoints
-│   │   ├── core\                    # LlamaServer supervisor, Hardware telemetry, Memory estimator
+│   │   ├── agent\                   # Agent mode: tool loop, file tools, change journal, terminal, task list
+│   │   ├── core\                    # LlamaServer supervisor, Hardware telemetry, Memory estimator, history fitting
 │   │   └── db\                      # SQLite async persistence (aiosqlite + WAL mode)
 │   ├── runtime\                     # Verified llama-server binaries and CUDA DLLs
 │   │   ├── bin\                     # llama-server.exe, cublas64_*.dll, cudart64_*.dll
@@ -29,7 +30,7 @@ S:\Mustang AI\
 │   └── run_backend.py               # Backend service launcher
 ├── frontend\                        # Obsidian Dark Vite + React 18 + Tailwind CSS
 │   ├── src\
-│   │   ├── components\              # StatusBar, ModelSelector, ChatInterface, PromptInput
+│   │   ├── components\              # StatusBar, ModelSelector, ChatInterface, PromptInput, AgentBar, ToolSteps, TaskPanel
 │   │   ├── hooks\                   # useChatStream, useHardware
 │   │   └── services\                # Typed REST client with X-Mustang-Token auth
 └── models\                          # Local GGUF models directory
@@ -59,6 +60,34 @@ cd "S:\Mustang AI\backend"
 .\.venv\Scripts\pytest.exe -v
 ```
 Tests run against a private run directory and a private, hard-linked copy of `models\`; they never modify `backend\run\mustang.db` or delete your models.
+
+---
+
+## Agent Mode (Milestone 5)
+
+Turn on **Agent** in the prompt bar, choose a **workspace folder**, and the model can work in that folder like a small local coding assistant. Everything runs on your own machine through the same local engine; nothing is sent anywhere.
+
+| Tool | What it does |
+|---|---|
+| `list_files`, `find_files`, `search_files`, `read_file` | Explore the workspace: folder trees, files by name (glob), text or regex inside files (optionally only some files), files read in parts (`start_line`/`end_line`) |
+| `create_file`, `edit_file` | Create a file (missing folders included), replace one, or change one exact piece of text. Each change is shown as a diff and needs your approval |
+| `run_command` | Run one Windows PowerShell command in the workspace. **Off by default**; see below |
+| `update_tasks` | A short task list the agent keeps current, shown in a **Tasks** panel above the prompt box and saved with the chat |
+| `get_current_time`, `calculator`, `search_history` | Small helpers |
+
+**Safety model**
+- File tools only see the workspace folder. Absolute paths, `..`, drive prefixes, reserved device names, links and junctions, and the app's own backup folder are refused; searches skip hidden folders and dependency folders such as `node_modules`. The agent never creates program or script files (`.exe`, `.bat`, `.ps1`, `.js`, ...).
+- Every file change needs your approval, can be undone (the previous version is kept in a hidden `.mustang-backups` folder inside the workspace), and **Approve all in this chat** covers file changes only.
+- **Terminal** is a separate switch per chat, asks before it turns on, and shows the exact command and folder for every run. Commands are never covered by "Approve all", stop after a timeout (60 s by default) and on **Stop** (the whole process tree), keep only the start and end of long output, get an environment without keys or tokens, and a short list of system-level commands (administrator, shutdown, disk formatting, registry, services, ...) is refused even when approved. **It is not a sandbox**: an approved command runs with your own permissions. Details: `docs\milestone-5\TERMINAL_ACCESS.md`.
+- The agent stops on its own after 24 tool steps per reply (a Continue button resumes), when it repeats the same call, or when its calls keep failing.
+
+**Using it well**
+- Load the model with a context of **16,384 or more**. Agent instructions and tool definitions alone take about 1,500 tokens; at 4,096 the model loses the task. The app warns about this and offers a one-click reload.
+- Long chats are fitted to the model's context window: old tool output is shortened and the oldest messages are left out, replaced by a short summary of the user's requests and the work done. Stored chats are never changed.
+- Tested with Qwen3.5 4B and a Qwen3.5 9B fine-tune. Models under about 3B misuse tools. A local model is much less reliable than a large cloud model: expect to review its work, and a short fresh chat per task works better than one very long chat.
+- Design, test reports and findings: `docs\milestone-5\`.
+
+**Status:** M5 phases 0 to E are done (tools, loop, UI, file changes with approval and Undo, terminal, task list, search). Phase F (security review and release testing) is not done, and the installer is unsigned.
 
 ---
 

@@ -1,11 +1,17 @@
 import { useState, useEffect, useCallback } from "react";
-import { StatusBar } from "./components/StatusBar";
+import { HeaderActions } from "./components/StatusBar";
 import { Sidebar } from "./components/Sidebar";
-import { ModelSelector } from "./components/ModelSelector";
+import { LibraryTab, ModelSelector } from "./components/ModelSelector";
+import { StartScreen } from "./components/StartScreen";
 import { ChatInterface } from "./components/ChatInterface";
 import { PromptInput } from "./components/PromptInput";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { SettingsModal } from "./components/SettingsModal";
+import { AgentBar } from "./components/AgentBar";
+import { TaskPanel } from "./components/TaskPanel";
+import { AGENT_CONTEXT, groupAgentMessages, tasksFromMessages } from "./services/agent";
+import { isDesktop } from "./services/connection";
+import { chooseWorkspaceFolder } from "./services/desktop";
 import { useHardware } from "./hooks/useHardware";
 import { useChatStream } from "./hooks/useChatStream";
 import {
@@ -18,8 +24,14 @@ import {
   deleteConversation,
   fetchProfiles,
   fetchSettings,
+  approveAgentChange,
+  fetchAgentChanges,
+  undoAgentChange,
+  loadModel,
 } from "./services/api";
 import {
+  AgentChange,
+  TaskItem,
   AppSettings,
   AssistantProfile,
   ConversationSummary,
@@ -36,7 +48,33 @@ export default function App() {
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<LibraryTab | null>(null);
   const [externalPrompt, setExternalPrompt] = useState<string | undefined>();
+
+  // Agent mode of the open chat (saved per conversation; a new chat starts with it off)
+  const [agentEnabled, setAgentEnabled] = useState(false);
+  const [workspace, setWorkspace] = useState<string | null>(null);
+  const [terminalEnabled, setTerminalEnabled] = useState(false);
+  const [savedTasks, setSavedTasks] = useState<TaskItem[]>([]); // the agent's task list as stored with the chat
+  // Chats where the user chose "Approve all" (kept for this session only, never saved).
+  const [autoApproveChats, setAutoApproveChats] = useState<Record<string, boolean>>({});
+  const agentOptions = agentEnabled ? { workspace, terminal: terminalEnabled && Boolean(workspace), autoApprove: Boolean(activeConversationId && autoApproveChats[activeConversationId]) } : null;
+  // File changes agent mode made in this chat, by tool call id (for Undo)
+  const [agentChanges, setAgentChanges] = useState<Record<string, AgentChange>>({});
+
+  const loadAgentChanges = useCallback(async (conversationId: string | null) => {
+    if (!conversationId) {
+      setAgentChanges({});
+      return;
+    }
+    try {
+      const list = await fetchAgentChanges(conversationId);
+      setAgentChanges(Object.fromEntries(list.map((c) => [c.call_id, c])));
+    } catch (err) {
+      console.warn("Could not load file changes:", err);
+      setAgentChanges({});
+    }
+  }, []);
 
   // Profiles and Settings
   const [profiles, setProfiles] = useState<AssistantProfile[]>([]);
@@ -118,14 +156,19 @@ export default function App() {
   useEffect(() => {
     if (!isGenerating && activeConversationId) {
       loadConversationsList();
+      loadAgentChanges(activeConversationId);
     }
-  }, [isGenerating, activeConversationId, loadConversationsList]);
+  }, [isGenerating, activeConversationId, loadConversationsList, loadAgentChanges]);
 
   const handleSelectConversation = async (id: string) => {
     try {
       setActiveConversationId(id);
       const detail = await fetchConversation(id);
-      setMessages(detail.messages);
+      setMessages(groupAgentMessages(detail.messages));
+      setAgentEnabled(Boolean(detail.agent_enabled));
+      setWorkspace(detail.workspace ?? null);
+      setTerminalEnabled(Boolean(detail.terminal_enabled));
+      setSavedTasks(detail.tasks ?? []);
       // If conversation has a custom profile or system prompt, match profile
       if (detail.profile_id) {
         const matchingProfile = profiles.find((p) => p.id === detail.profile_id);
@@ -149,9 +192,83 @@ export default function App() {
       setConversations((prev) => [created, ...prev]);
       setActiveConversationId(created.id);
       setMessages([]);
+      setAgentEnabled(false);
+      setWorkspace(null);
+      setTerminalEnabled(false);
+      setSavedTasks([]);
     } catch (err) {
       console.error("Failed to create new conversation:", err);
     }
+  };
+
+  /** Save agent mode / workspace on the open chat (or keep them for the chat the next send creates). */
+  const saveAgentSettings = async (change: { agent_enabled?: boolean; workspace?: string; terminal_enabled?: boolean }) => {
+    if (!activeConversationId) return true;
+    try {
+      await updateConversation(activeConversationId, change);
+      return true;
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not save agent settings");
+      return false;
+    }
+  };
+
+  const handleApproveChange = async (callId: string, approved: boolean, approveAll = false) => {
+    try {
+      await approveAgentChange(callId, approved, approveAll);
+      if (approveAll && approved && activeConversationId) {
+        setAutoApproveChats((prev) => ({ ...prev, [activeConversationId]: true }));
+      }
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not send your answer");
+    }
+  };
+
+  const handleUndoChange = async (callId: string) => {
+    if (!activeConversationId) return;
+    try {
+      await undoAgentChange(activeConversationId, callId);
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not undo the change");
+    }
+    await loadAgentChanges(activeConversationId);
+  };
+
+  const handleToggleAgent = async (enabled: boolean) => {
+    if (await saveAgentSettings({ agent_enabled: enabled })) setAgentEnabled(enabled);
+  };
+
+  const handleReloadBigger = async () => {
+    const name = engineStatus?.model_name;
+    if (!name) return;
+    setErrorMessage(null);
+    try {
+      setEngineStatus(await loadModel(name, 99, AGENT_CONTEXT));
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : "Could not reload the model with a larger context");
+    }
+  };
+
+  const handleToggleTerminal = async (enabled: boolean) => {
+    if (await saveAgentSettings({ terminal_enabled: enabled })) setTerminalEnabled(enabled);
+  };
+
+  const handleChooseWorkspace = async () => {
+    let folder: string | null = null;
+    try {
+      folder = isDesktop
+        ? await chooseWorkspaceFolder()
+        : window.prompt("Workspace folder for agent mode (full path, e.g. C:\\Users\\you\\Documents\\notes):", workspace ?? "");
+    } catch (err) {
+      setErrorMessage(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    if (!folder?.trim()) return;
+    if (await saveAgentSettings({ workspace: folder.trim() })) setWorkspace(folder.trim());
+  };
+
+  const handleClearWorkspace = async () => {
+    if (await saveAgentSettings({ workspace: "" })) setWorkspace(null);
   };
 
   const handleRenameConversation = async (id: string, newTitle: string) => {
@@ -192,6 +309,9 @@ export default function App() {
         model: engineStatus?.model_name || "local-model",
         system_prompt: activeProfile?.system_prompt || "",
         profile_id: activeProfile?.id || "default",
+        agent_enabled: agentEnabled,
+        workspace,
+        terminal_enabled: terminalEnabled && Boolean(workspace),
       });
       setConversations((prev) => [created, ...prev]);
       setActiveConversationId(created.id);
@@ -201,12 +321,12 @@ export default function App() {
     const effectiveSystemPrompt =
       appSettings.custom_system_prompt.trim() || activeProfile?.system_prompt || "";
 
-    await sendMessage(prompt, targetConvId, effectiveSystemPrompt, appSettings);
+    await sendMessage(prompt, targetConvId, effectiveSystemPrompt, appSettings, agentOptions);
   };
 
   const handleRegenerate = async () => {
     if (!activeConversationId) return;
-    await regenerateResponse(activeConversationId, appSettings);
+    await regenerateResponse(activeConversationId, appSettings, agentOptions);
   };
 
   const handleEditMessage = async (messageId: string, newContent: string) => {
@@ -218,91 +338,115 @@ export default function App() {
       messageId,
       newContent,
       effectiveSystemPrompt,
-      appSettings
+      appSettings,
+      agentOptions
     );
   };
 
-  const handleSuggestionSelected = (prompt: string) => {
-    setExternalPrompt(prompt);
-  };
+  // The newest task list the agent wrote in this chat (live while it streams), else the stored one.
+  const tasks = tasksFromMessages(messages) ?? savedTasks;
 
   const activeError = errorMessage || streamError || engineStatus?.error_message || null;
   const isReady = engineStatus?.state === "READY";
 
+  const composer = (
+    <PromptInput
+      onSend={handleSendPrompt}
+      onStop={stopStream}
+      isGenerating={isGenerating}
+      // The engine reports GENERATING until the next status poll after a reply ends; typing is still fine then.
+      disabled={!isReady && !isGenerating && engineStatus?.state !== "GENERATING"}
+      placeholder={isReady || isGenerating || engineStatus?.state === "GENERATING" ? "Ask anything…" : "Load a model to start"}
+      externalPrompt={externalPrompt}
+      onExternalPromptConsumed={() => setExternalPrompt(undefined)}
+      toolbar={
+        <AgentBar
+          enabled={agentEnabled}
+          workspace={workspace}
+          modelName={engineStatus?.model_name}
+          disabled={isGenerating}
+          terminal={terminalEnabled}
+          onToggleTerminal={handleToggleTerminal}
+          contextSize={isReady ? engineStatus?.context_size : undefined}
+          onUseBiggerContext={handleReloadBigger}
+          autoApprove={Boolean(activeConversationId && autoApproveChats[activeConversationId])}
+          onTurnOffAutoApprove={() => activeConversationId && setAutoApproveChats((prev) => ({ ...prev, [activeConversationId]: false }))}
+          onToggle={handleToggleAgent}
+          onChooseWorkspace={handleChooseWorkspace}
+          onClearWorkspace={handleClearWorkspace}
+        />
+      }
+    />
+  );
+
   return (
-    <div className="flex flex-col h-screen bg-[#07090E] font-sans text-slate-100 overflow-hidden">
-      {/* Top Navbar & Telemetry */}
-      <StatusBar
+    <div className="flex h-screen bg-canvas text-fg overflow-hidden">
+      <Sidebar
+        conversations={conversations}
+        activeConversationId={activeConversationId}
+        onSelectConversation={handleSelectConversation}
+        onNewConversation={handleNewConversation}
+        onRenameConversation={handleRenameConversation}
+        onDeleteConversation={handleDeleteConversation}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         telemetry={telemetry}
         engineStatus={engineStatus}
         tokensPerSec={tokensPerSec}
-        activeProfile={activeProfile}
-        profiles={profiles}
-        onSelectProfile={setActiveProfile}
-        onOpenSettings={() => setIsSettingsOpen(true)}
       />
 
-      {/* Main App Workspace */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Obsidian Collapsible Sidebar */}
-        <Sidebar
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          onSelectConversation={handleSelectConversation}
-          onNewConversation={handleNewConversation}
-          onRenameConversation={handleRenameConversation}
-          onDeleteConversation={handleDeleteConversation}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        />
-
-        {/* Central Chat Interface Column */}
-        <main className="flex-1 flex flex-col min-w-0 max-w-5xl mx-auto p-4 gap-3 overflow-hidden">
-          {/* Model Management & Advisory Bar */}
+      <div className="flex-1 min-w-0 p-2 sm:p-2.5">
+        <div className="main-glow h-full rounded-2xl border border-line/70 flex flex-col overflow-hidden shadow-2xl relative">
           <ModelSelector
             engineStatus={engineStatus}
             onStatusChange={setEngineStatus}
             onError={setErrorMessage}
-          />
-
-          {/* Actionable Error Banner */}
-          <ErrorBanner
-            error={activeError}
-            onDismiss={() => setErrorMessage(null)}
-          />
-
-          {/* Central Chat Window */}
-          <div className="flex-1 flex flex-col min-h-0 bg-[#0A0D17]/60 border border-white/[0.06] rounded-2xl overflow-hidden backdrop-blur-md">
-            <ChatInterface
-              messages={messages}
-              isGenerating={isGenerating}
-              onRegenerate={handleRegenerate}
-              onEditMessage={handleEditMessage}
-              onSelectPromptSuggestion={handleSuggestionSelected}
-              activeModelName={engineStatus?.model_name}
-            />
-
-            {/* Prompt Input Box */}
-            <div className="p-3 border-t border-white/[0.06] bg-[#07090E]/80 backdrop-blur-md">
-              <PromptInput
-                onSend={handleSendPrompt}
-                onStop={stopStream}
-                isGenerating={isGenerating}
-                disabled={!isReady && !isGenerating}
-                placeholder={
-                  isReady
-                    ? `Message ${engineStatus?.model_name || "model"}...`
-                    : "Load a model in the panel above to begin chatting..."
-                }
-                externalPrompt={externalPrompt}
-                onExternalPromptConsumed={() => setExternalPrompt(undefined)}
+            libraryTab={libraryTab}
+            onLibraryTabChange={setLibraryTab}
+            trailing={
+              <HeaderActions
+                activeProfile={activeProfile}
+                profiles={profiles}
+                onSelectProfile={setActiveProfile}
+                onOpenSettings={() => setIsSettingsOpen(true)}
               />
+            }
+          />
+          <ErrorBanner error={activeError} onDismiss={() => setErrorMessage(null)} />
+
+          <main className="flex-1 flex flex-col min-h-0">
+            {messages.length === 0 ? (
+              <StartScreen
+                modelName={isReady || isGenerating ? engineStatus?.model_name : null}
+                agentEnabled={agentEnabled}
+                onQuickPrompt={setExternalPrompt}
+                onEnableAgent={() => handleToggleAgent(true)}
+                onOpenLibrary={setLibraryTab}
+              />
+            ) : (
+              <ChatInterface
+                messages={messages}
+                isGenerating={isGenerating}
+                onRegenerate={handleRegenerate}
+                onEditMessage={handleEditMessage}
+                activeModelName={engineStatus?.model_name}
+                agentChanges={agentChanges}
+                onApproveChange={handleApproveChange}
+                onUndoChange={handleUndoChange}
+                onContinue={() => handleSendPrompt("Continue where you left off.")}
+              />
+            )}
+            {/* One prompt box for the whole session, so sending the first message doesn't rebuild it. */}
+            <div className="shrink-0 px-6 pb-5 pt-2">
+              <div className="max-w-3xl mx-auto">
+                {agentEnabled && <TaskPanel tasks={tasks} working={isGenerating} />}
+                {composer}
+              </div>
             </div>
-          </div>
-        </main>
+          </main>
+        </div>
       </div>
 
-      {/* Application & Generation Settings Modal */}
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

@@ -1,4 +1,5 @@
 import {
+  AgentChange,
   AppSettings,
   AssistantProfile,
   ConversationDetail,
@@ -280,6 +281,9 @@ export async function createConversation(data: {
   model?: string;
   system_prompt?: string;
   profile_id?: string;
+  agent_enabled?: boolean;
+  workspace?: string | null;
+  terminal_enabled?: boolean;
 }): Promise<ConversationSummary> {
   const res = await apiFetch(`/api/conversations`, {
     method: "POST",
@@ -298,15 +302,60 @@ export async function fetchConversation(id: string): Promise<ConversationDetail>
 
 export async function updateConversation(
   id: string,
-  data: { title?: string; system_prompt?: string; profile_id?: string; model?: string }
+  data: {
+    title?: string;
+    system_prompt?: string;
+    profile_id?: string;
+    model?: string;
+    agent_enabled?: boolean;
+    /** Agent mode's workspace folder; "" clears it. */
+    workspace?: string;
+    /** Terminal access for the agent (each command is still approved). */
+    terminal_enabled?: boolean;
+  }
 ): Promise<ConversationSummary> {
   const res = await apiFetch(`/api/conversations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: getHeaders(false),
     body: JSON.stringify(data),
   });
-  if (!res.ok) throw new Error("Failed to update conversation");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to update conversation");
+  }
   return res.json();
+}
+
+// --- Agent mode file changes (M5 Phase E) ---
+
+async function detailOrThrow(res: Response, fallback: string): Promise<never> {
+  const err = await res.json().catch(() => ({}));
+  throw new Error(err.detail || fallback);
+}
+
+/** Answer a file change the agent proposed (shown as a diff). */
+export async function approveAgentChange(callId: string, approved: boolean, approveAll = false): Promise<void> {
+  const res = await apiFetch(`/api/chat/approve`, {
+    method: "POST",
+    headers: getHeaders(false),
+    body: JSON.stringify({ call_id: callId, approved, approve_all: approveAll }),
+  });
+  if (!res.ok) await detailOrThrow(res, "Could not send your answer");
+}
+
+export async function fetchAgentChanges(conversationId: string): Promise<AgentChange[]> {
+  const res = await apiFetch(`/api/chat/changes?conversation_id=${encodeURIComponent(conversationId)}`);
+  if (!res.ok) await detailOrThrow(res, "Could not load file changes");
+  return res.json();
+}
+
+export async function undoAgentChange(conversationId: string, callId: string): Promise<void> {
+  const res = await apiFetch(`/api/chat/undo`, {
+    method: "POST",
+    headers: getHeaders(false),
+    body: JSON.stringify({ conversation_id: conversationId, call_id: callId }),
+  });
+  if (!res.ok) await detailOrThrow(res, "Could not undo the change");
 }
 
 export async function deleteConversation(id: string): Promise<void> {

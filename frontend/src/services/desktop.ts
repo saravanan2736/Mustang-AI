@@ -17,6 +17,8 @@ export const getDesktopSettings = () => invoke<DesktopSettings>("desktop_setting
 export const setCloseToTray = (enabled: boolean) => invoke<void>("set_close_to_tray", { enabled });
 /** Opens the native folder picker; resolves to the new folder, or null if cancelled. */
 export const chooseModelsFolder = () => invoke<string | null>("choose_models_folder");
+/** Native folder picker for agent mode's workspace; null if cancelled. The backend validates it. */
+export const chooseWorkspaceFolder = () => invoke<string | null>("choose_workspace_folder");
 export const resetModelsFolder = () => invoke<string>("reset_models_folder");
 export const openFolder = (which: "models" | "logs") => invoke<void>("open_folder", { which });
 export const openExternal = (url: string) => invoke<void>("open_external", { url });

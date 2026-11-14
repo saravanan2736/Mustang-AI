@@ -4,66 +4,136 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Black and violet, as RGB triplets so Tailwind can apply opacity:
+ * bg-panel, border-line, text-muted, bg-accent/10 ... (see tailwind.config.js).
+ */
+:root {
+  --canvas: 9 8 13;           /* #09080D  deep obsidian base */
+  --surface: 13 11 18;        /* #0D0B12  sidebar, secondary bg */
+  --panel: 21 18 27;          /* #15121B  cards, menus, prompt box */
+  --raised: 27 22 34;         /* #1B1622  inputs, hover, chips, user msgs */
+  --line: 50 44 58;           /* #322C3A  borders */
+  --line-soft: 35 30 42;      /* #231E2A  soft dividers */
+  --fg: 245 241 248;          /* #F5F1F8  primary text */
+  --muted: 165 156 170;       /* #A59CAA  secondary text */
+  --subtle: 113 106 121;      /* #716A79  hints, placeholders */
+  --accent: 168 85 247;       /* #A855F7  primary actions, focus */
+  --accent-hover: 139 92 246; /* #8B5CF6  hover / secondary accent */
+  --link: 196 181 253;        /* #C4B5FD  links */
+  --success: 74 222 128;      /* #4ade80 */
+  --warning: 251 191 36;      /* #fbbf24 */
+  --danger: 248 113 113;      /* #f87171 */
+
+  /* Obsidian Glass tokens */
+  --glass-bg: 255 255 255;
+  --glass-opacity: 0.035;
+  --glass-border-opacity: 0.08;
+  --glass-blur: 12px;
+
+  color-scheme: dark;
+}
+
+/* Main panel: a soft violet glow from the top, fading into the surface colour. */
+.main-glow {
+  background:
+    radial-gradient(ellipse 75% 50% at 50% -5%, rgb(168 85 247 / 0.18), transparent 70%),
+    rgb(var(--surface));
+}
+
+/* Glass surfaces — the signature Obsidian Glass look. */
+.glass {
+  background: rgb(var(--glass-bg) / var(--glass-opacity));
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid rgb(var(--glass-bg) / var(--glass-border-opacity));
+}
+
+.glass-strong {
+  background: rgb(var(--glass-bg) / 0.06);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgb(var(--glass-bg) / 0.1);
+}
+
+/* The glossy sphere on the start screen. */
+.orb {
+  background: radial-gradient(circle at 34% 28%, #faf5ff 0%, #d8b4fe 14%, #a855f7 40%, #581c87 70%, #1e0b3a 100%);
+  box-shadow: 0 0 56px rgb(168 85 247 / 0.5), inset -6px -8px 16px rgb(0 0 0 / 0.45);
+}
+
+/* Primary round button (send). */
+.btn-violet {
+  background: linear-gradient(180deg, #a855f7 0%, #7c3aed 100%);
+}
+
 @layer base {
   body {
-    @apply bg-[#07090E] text-slate-100 antialiased overflow-hidden select-text;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    @apply bg-canvas text-fg antialiased overflow-hidden select-text;
+    font-size: 14px;
   }
 
-  /* Custom Obsidian Scrollbar */
+  ::selection {
+    background: rgb(var(--accent) / 0.4);
+  }
+
+  input[type="range"] {
+    accent-color: rgb(var(--accent));
+    height: 4px;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    background: rgb(var(--raised));
+    border-radius: 2px;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: rgb(var(--accent-hover));
+    border: 2px solid rgb(var(--surface));
+  }
+
+  :focus-visible {
+    outline: 2px solid rgb(var(--accent));
+    outline-offset: 1px;
+  }
+
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
   }
 
   ::-webkit-scrollbar-track {
-    background: #0B0E17;
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #1E2638;
+    background: rgb(var(--line));
     border-radius: 4px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #4F46E5;
+    background: rgb(var(--subtle));
   }
 }
 
-.glass-panel {
-  background: rgba(15, 19, 31, 0.75);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
-.glass-panel-subtle {
-  background: rgba(11, 14, 23, 0.65);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.05);
-}
-
-.glass-modal {
-  background: rgba(10, 13, 22, 0.92);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.glow-indigo {
-  box-shadow: 0 0 25px -4px rgba(99, 102, 241, 0.35);
-}
-
-.glow-subtle {
-  box-shadow: 0 0 15px -3px rgba(99, 102, 241, 0.18);
-}
-
-/* Obsidian Dark Prism Syntax Highlighting */
+/* Syntax highlighting (Prism tokens), muted to the palette */
 code[class*="language-"],
 pre[class*="language-"] {
-  color: #E2E8F0;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  color: rgb(var(--fg));
+  font-family: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.5;
   tab-size: 2;
@@ -77,12 +147,11 @@ pre[class*="language-"] {
 .token.prolog,
 .token.doctype,
 .token.cdata {
-  color: #64748B;
-  font-style: italic;
+  color: #8b949e;
 }
 
 .token.punctuation {
-  color: #94A3B8;
+  color: #c9d1d9;
 }
 
 .token.property,
@@ -91,7 +160,7 @@ pre[class*="language-"] {
 .token.number,
 .token.constant,
 .token.symbol {
-  color: #FBBF24;
+  color: #79c0ff;
 }
 
 .token.selector,
@@ -99,7 +168,7 @@ pre[class*="language-"] {
 .token.string,
 .token.char,
 .token.builtin {
-  color: #34D399;
+  color: #a5d6ff;
 }
 
 .token.operator,
@@ -107,57 +176,64 @@ pre[class*="language-"] {
 .token.url,
 .language-css .token.string,
 .style .token.string {
-  color: #38BDF8;
+  color: #ff7b72;
 }
 
 .token.atrule,
 .token.attr-value,
 .token.keyword {
-  color: #818CF8;
-  font-weight: 600;
+  color: #ff7b72;
 }
 
 .token.function,
 .token.class-name {
-  color: #C084FC;
+  color: #d2a8ff;
 }
 
 .token.regex,
 .token.important,
 .token.variable {
-  color: #F43F5E;
+  color: #ffa657;
 }
 
-/* Markdown styling */
+/* Markdown in assistant replies */
+.markdown-content {
+  line-height: 1.6;
+}
+
+.markdown-content p {
+  margin: 0.5rem 0;
+}
+
+.markdown-content a {
+  color: rgb(var(--link));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .markdown-content table {
   width: 100%;
   border-collapse: collapse;
-  margin: 1rem 0;
+  margin: 0.75rem 0;
   font-size: 0.875rem;
 }
 
 .markdown-content th,
 .markdown-content td {
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  padding: 0.5rem 0.75rem;
+  border: 1px solid rgb(var(--line));
+  padding: 0.4rem 0.7rem;
   text-align: left;
 }
 
 .markdown-content th {
-  background-color: rgba(99, 102, 241, 0.12);
-  color: #E2E8F0;
+  background-color: rgb(var(--panel));
   font-weight: 600;
 }
 
-.markdown-content tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.02);
-}
-
 .markdown-content blockquote {
-  border-left: 3px solid #6366F1;
-  padding-left: 1rem;
-  color: #94A3B8;
-  font-style: italic;
+  border-left: 3px solid rgb(var(--line));
+  padding-left: 0.9rem;
+  color: rgb(var(--muted));
   margin: 0.75rem 0;
 }
 
@@ -174,23 +250,21 @@ pre[class*="language-"] {
 }
 
 .markdown-content li {
-  margin: 0.25rem 0;
+  margin: 0.2rem 0;
 }
 
 .markdown-content h1 {
-  font-size: 1.35rem;
-  font-weight: 700;
-  margin-top: 1.25rem;
-  margin-bottom: 0.5rem;
-  color: #F8FAFC;
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-top: 1.1rem;
+  margin-bottom: 0.4rem;
 }
 
 .markdown-content h2 {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 600;
   margin-top: 1rem;
   margin-bottom: 0.4rem;
-  color: #F1F5F9;
 }
 
 .markdown-content h3 {
@@ -198,5 +272,9 @@ pre[class*="language-"] {
   font-weight: 600;
   margin-top: 0.75rem;
   margin-bottom: 0.3rem;
-  color: #E2E8F0;
+}
+
+.markdown-content hr {
+  border-color: rgb(var(--line));
+  margin: 1rem 0;
 }

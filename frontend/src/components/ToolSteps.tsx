@@ -1,0 +1,214 @@
+import React from "react";
+import { Ban, CheckCircle2, ChevronRight, FilePen, Loader2, RotateCcw, XCircle } from "lucide-react";
+import { AgentChange, AgentStep } from "../types";
+import { CHANGE_TOOLS, COMMAND_TOOL, STOP_REASON_TEXT, TASKS_TOOL } from "../services/agent";
+
+const TOOL_LABELS: Record<string, string> = {
+  get_current_time: "Checked the time",
+  calculator: "Calculated",
+  list_files: "Listed files",
+  read_file: "Read file",
+  search_files: "Searched files",
+  find_files: "Found files",
+  search_history: "Searched this chat",
+  create_file: "Create file",
+  edit_file: "Edit file",
+  run_command: "Run command",
+};
+
+/** The one argument worth showing in the card's title line. */
+function argumentSummary(raw: string): string {
+  try {
+    const args = JSON.parse(raw || "{}");
+    const value = args.path ?? args.pattern ?? args.query ?? args.expression ?? args.command;
+    return typeof value === "string" ? value : "";
+  } catch {
+    return raw.slice(0, 60);
+  }
+}
+
+/** A terminal command as the user will see it in a shell. */
+const CommandView: React.FC<{ text: string }> = ({ text }) => (
+  <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-canvas/90 border border-line/60 p-3 font-mono text-xs leading-snug text-fg">
+    {text}
+  </pre>
+);
+
+/** Unified diff with added lines green and removed lines red. */
+const DiffView: React.FC<{ diff: string }> = ({ diff }) => (
+  <pre className="max-h-64 overflow-auto rounded-xl bg-canvas/90 border border-line/60 p-3 font-mono text-xs leading-snug">
+    {diff.split("\n").map((line, i) => {
+      const cls = line.startsWith("+++") || line.startsWith("---")
+        ? "text-subtle"
+        : line.startsWith("+")
+        ? "text-success bg-success/10 px-1 rounded"
+        : line.startsWith("-")
+        ? "text-danger bg-danger/10 px-1 rounded"
+        : line.startsWith("@@")
+        ? "text-accent/80 font-semibold"
+        : "text-muted";
+      return (
+        <div key={i} className={`whitespace-pre-wrap break-words ${cls}`}>
+          {line || " "}
+        </div>
+      );
+    })}
+  </pre>
+);
+
+interface ToolStepsProps {
+  steps: AgentStep[];
+  stopReason?: string | null;
+  /** Journal state of this chat's file changes, by call id (for Undo). */
+  changes?: Record<string, AgentChange>;
+  onApprove?: (callId: string, approved: boolean, approveAll?: boolean) => void;
+  onUndo?: (callId: string) => void;
+  /** Offered when the reply paused at the step limit (only on the latest reply). */
+  onContinue?: () => void;
+}
+
+const StatusIcon: React.FC<{ status: AgentStep["status"] }> = ({ status }) =>
+  status === "running" ? (
+    <Loader2 className="w-3.5 h-3.5 text-accent animate-spin shrink-0" />
+  ) : status === "awaiting" ? (
+    <FilePen className="w-3.5 h-3.5 text-warning shrink-0" />
+  ) : status === "ok" ? (
+    <CheckCircle2 className="w-3.5 h-3.5 text-success shrink-0" />
+  ) : status === "denied" ? (
+    <Ban className="w-3.5 h-3.5 text-subtle shrink-0" />
+  ) : (
+    <XCircle className="w-3.5 h-3.5 text-danger shrink-0" />
+  );
+
+/** Tool steps of an agent-mode reply, one collapsible card per call. */
+export const ToolSteps: React.FC<ToolStepsProps> = ({ steps: allSteps, stopReason, changes, onApprove, onUndo, onContinue }) => {
+  const steps = allSteps.filter((s) => s.name !== TASKS_TOOL); // the task list has its own panel
+  if (!steps.length && !(stopReason && STOP_REASON_TEXT[stopReason])) return null;
+  return (
+  <div className="space-y-2 mb-3.5 not-prose">
+    {steps.map((s) => {
+      const summary = argumentSummary(s.arguments);
+      const isChange = CHANGE_TOOLS.has(s.name);
+      const isCommand = s.name === COMMAND_TOOL;
+      const change = changes?.[s.call_id];
+
+      if (s.status === "awaiting") {
+        // A proposed file change: always open, with the diff and the two answers.
+        return (
+          <div key={s.call_id} className="rounded-2xl border border-warning/40 bg-panel/85 p-4 space-y-3 shadow-lg">
+            {s.note && <p className="text-[13px] text-muted">{s.note}</p>}
+            <div className="flex items-center gap-2 text-[13px] text-fg">
+              <StatusIcon status={s.status} />
+              <span className="font-semibold">{s.summary || `${TOOL_LABELS[s.name] ?? s.name} ${summary}`}</span>
+              <span className="ml-auto text-xs font-medium text-warning px-2 py-0.5 rounded-full bg-warning/10 border border-warning/30">
+                Action Required
+              </span>
+            </div>
+            {s.diff && (isCommand ? <CommandView text={s.diff} /> : <DiffView diff={s.diff} />)}
+            {isCommand && (
+              <p className="text-xs text-warning">
+                This runs on your computer with your own permissions. Read the command before you allow it.
+              </p>
+            )}
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => onApprove?.(s.call_id, true)}
+                className="h-7 px-3.5 rounded-xl btn-violet text-white text-xs font-medium hover:brightness-110 transition-all"
+              >
+                {isCommand ? "Run command" : "Approve change"}
+              </button>
+              <button
+                type="button"
+                onClick={() => onApprove?.(s.call_id, false)}
+                className="h-7 px-3.5 rounded-xl border border-line/70 hover:bg-raised/80 text-fg text-xs font-medium transition-all"
+              >
+                Deny
+              </button>
+              {!isCommand && (
+                <button
+                  type="button"
+                  onClick={() => onApprove?.(s.call_id, true, true)}
+                  className="h-7 px-3.5 rounded-xl border border-line/70 hover:bg-raised/80 text-fg text-xs font-medium transition-all"
+                  title="Approve this and every later change in this chat without asking. You can still undo each one."
+                >
+                  Approve all in this chat
+                </button>
+              )}
+              <span className="text-xs text-subtle ml-1">
+                {isCommand ? "Nothing runs unless you approve." : "Nothing is written unless you approve."}
+              </span>
+            </div>
+          </div>
+        );
+      }
+
+      return (
+        <div key={s.call_id}>
+          {s.note && <p className="text-[13px] text-muted mb-1">{s.note}</p>}
+          <details className="group/step rounded-xl border border-line/60 bg-panel/70 overflow-hidden shadow-sm transition-colors">
+            <summary className="flex items-center gap-2 h-8 px-3 cursor-pointer list-none text-xs text-fg select-none hover:bg-raised/40 transition-colors">
+              <ChevronRight className="w-3 h-3 text-subtle transition-transform group-open/step:rotate-90 shrink-0" />
+              <StatusIcon status={s.status} />
+              <span className="font-medium">
+                {TOOL_LABELS[s.name] ?? s.name}
+                {(isChange || isCommand) && s.status === "denied" ? " (denied)" : ""}
+                {change?.undone ? " (undone)" : ""}
+              </span>
+              {summary && <code className="font-mono text-xs text-muted truncate">{summary}</code>}
+              {isChange && s.status === "ok" && change?.can_undo && onUndo && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    onUndo(s.call_id);
+                  }}
+                  className="ml-1 flex items-center gap-1 h-5 px-2 rounded-lg border border-line/70 text-xs text-fg hover:bg-raised/80"
+                  title="Put back the previous version of this file"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Undo
+                </button>
+              )}
+              <span className="ml-auto text-[11px] font-mono text-subtle/80 shrink-0">step {s.step}</span>
+            </summary>
+            <div className="px-3.5 pb-3 pt-1.5 space-y-2 text-xs border-t border-line/40 bg-surface/50">
+              <div>
+                <span className="text-subtle">Tool: </span>
+                <code className="font-mono text-accent">{s.name}</code>
+                {(!(isChange || isCommand) || !s.diff) && (
+                  <>
+                    <span className="text-subtle"> with </span>
+                    <code className="font-mono text-muted break-all">{s.arguments || "{}"}</code>
+                  </>
+                )}
+              </div>
+              {isChange && s.diff && <DiffView diff={s.diff} />}
+              {isCommand && s.diff && <CommandView text={s.diff} />}
+              {s.result !== undefined && (
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-xl bg-canvas/90 border border-line/60 p-2.5 font-mono text-xs text-muted">
+                  {s.result}
+                </pre>
+              )}
+            </div>
+          </details>
+        </div>
+      );
+    })}
+    {stopReason && STOP_REASON_TEXT[stopReason] && (
+      <div className="flex items-center gap-2.5">
+        <p className="text-xs text-warning">{STOP_REASON_TEXT[stopReason]}</p>
+        {stopReason === "step_limit" && onContinue && (
+          <button
+            type="button"
+            onClick={onContinue}
+            className="h-6 px-3 rounded-md bg-accent text-white text-xs font-medium hover:bg-accent-hover transition-colors"
+          >
+            Continue
+          </button>
+        )}
+      </div>
+    )}
+  </div>
+  );
+};

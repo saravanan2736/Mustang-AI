@@ -3,6 +3,7 @@ Mustang AI Conversations API
 Thread management, persistent message storage, truncation, and history querying in SQLite.
 """
 
+import json
 import logging
 import time
 import uuid
@@ -10,6 +11,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
+from app.agent.workspace import Workspace, WorkspaceError
 from app.db.database import get_db
 
 logger = logging.getLogger("mustang.conversations")
@@ -23,6 +25,9 @@ class CreateConversationRequest(BaseModel):
     model: str = ""
     system_prompt: str = ""
     profile_id: str = "default"
+    agent_enabled: bool = False
+    workspace: str | None = Field(default=None, max_length=1024)
+    terminal_enabled: bool = False
 
 
 class UpdateConversationRequest(BaseModel):
@@ -30,16 +35,49 @@ class UpdateConversationRequest(BaseModel):
     system_prompt: str | None = None
     profile_id: str | None = None
     model: str | None = None
+    agent_enabled: bool | None = None
+    terminal_enabled: bool | None = None
+    workspace: str | None = Field(default=None, max_length=1024)  # "" clears it
+
+
+def _stored_tasks(raw: str | None) -> list[dict]:
+    try:
+        data = json.loads(raw) if raw else []
+        return [t for t in data if isinstance(t, dict) and t.get("text")]
+    except (ValueError, TypeError):
+        return []
+
+
+def _checked_workspace(folder: str | None) -> str | None:
+    """A workspace folder as stored: validated like the agent will use it, or None."""
+    if not folder:
+        return None
+    try:
+        return str(Workspace(folder).root)
+    except WorkspaceError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Workspace: {e}")
 
 
 class MessageItem(BaseModel):
     id: str
     conversation_id: str
-    role: Literal["system", "user", "assistant"]
+    role: Literal["system", "user", "assistant", "tool"]
     content: str
     token_count: int = 0
     finish_reason: str | None = None
     created_at: float
+    tool_calls: list[dict] | None = None  # agent mode: calls made by this assistant turn
+    tool_call_id: str | None = None  # agent mode: the call a "tool" row answers
+
+
+def _tool_calls(raw: str | None) -> list[dict] | None:
+    if not raw:
+        return None
+    try:
+        calls = json.loads(raw)
+        return calls if isinstance(calls, list) else None
+    except json.JSONDecodeError:
+        return None
 
 
 class AddMessageRequest(BaseModel):
@@ -75,6 +113,10 @@ class ConversationDetail(BaseModel):
     created_at: float
     updated_at: float
     messages: list[MessageItem]
+    agent_enabled: bool = False
+    workspace: str | None = None
+    terminal_enabled: bool = False
+    tasks: list[dict] = Field(default_factory=list)  # the agent's task list (update_tasks)
 
 
 # --- Endpoints ---
@@ -91,7 +133,7 @@ async def list_conversations(
             SELECT 
                 c.id, c.title, c.model, c.system_prompt, c.profile_id, c.created_at, c.updated_at,
                 COUNT(m.id) AS message_count,
-                (SELECT content FROM messages WHERE conversation_id = c.id ORDER BY created_at DESC, rowid DESC LIMIT 1) AS last_message
+                (SELECT content FROM messages WHERE conversation_id = c.id AND role IN ('user', 'assistant') AND content != '' ORDER BY created_at DESC, rowid DESC LIMIT 1) AS last_message
             FROM conversations c
             LEFT JOIN messages m ON c.id = m.conversation_id
             GROUP BY c.id
@@ -125,15 +167,17 @@ async def create_conversation(req: CreateConversationRequest):
     conv_id = str(uuid.uuid4())
     now = time.time()
     title = req.title.strip() if req.title and req.title.strip() else "New Chat"
+    workspace = _checked_workspace(req.workspace)
 
     db = await get_db()
     try:
         await db.execute(
             """
-            INSERT INTO conversations (id, title, model, system_prompt, profile_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO conversations (id, title, model, system_prompt, profile_id, created_at, updated_at, agent_enabled, workspace, terminal_enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (conv_id, title, req.model, req.system_prompt, req.profile_id, now, now),
+            (conv_id, title, req.model, req.system_prompt, req.profile_id, now, now, int(req.agent_enabled), workspace,
+             int(req.terminal_enabled)),
         )
         await db.commit()
         return ConversationSummary(
@@ -179,6 +223,8 @@ async def get_conversation(conversation_id: str):
                 token_count=m["token_count"] or 0,
                 finish_reason=m["finish_reason"],
                 created_at=m["created_at"],
+                tool_calls=_tool_calls(m["tool_calls"]),
+                tool_call_id=m["tool_call_id"],
             )
             for m in msg_rows
         ]
@@ -192,6 +238,10 @@ async def get_conversation(conversation_id: str):
             created_at=conv["created_at"],
             updated_at=conv["updated_at"],
             messages=messages,
+            agent_enabled=bool(conv["agent_enabled"]),
+            workspace=conv["workspace"],
+            terminal_enabled=bool(conv["terminal_enabled"]),
+            tasks=_stored_tasks(conv["tasks"]),
         )
     finally:
         await db.close()
@@ -216,15 +266,18 @@ async def update_conversation(conversation_id: str, req: UpdateConversationReque
         new_prompt = req.system_prompt if req.system_prompt is not None else conv["system_prompt"]
         new_profile = req.profile_id if req.profile_id is not None else conv["profile_id"]
         new_model = req.model if req.model is not None else conv["model"]
+        new_agent = int(req.agent_enabled) if req.agent_enabled is not None else conv["agent_enabled"]
+        new_workspace = _checked_workspace(req.workspace) if req.workspace is not None else conv["workspace"]
+        new_terminal = int(req.terminal_enabled) if req.terminal_enabled is not None else conv["terminal_enabled"]
         now = time.time()
 
         await db.execute(
             """
             UPDATE conversations
-            SET title = ?, system_prompt = ?, profile_id = ?, model = ?, updated_at = ?
+            SET title = ?, system_prompt = ?, profile_id = ?, model = ?, agent_enabled = ?, workspace = ?, terminal_enabled = ?, updated_at = ?
             WHERE id = ?
             """,
-            (new_title, new_prompt, new_profile, new_model, now, conversation_id),
+            (new_title, new_prompt, new_profile, new_model, new_agent, new_workspace, new_terminal, now, conversation_id),
         )
         await db.commit()
 
@@ -236,7 +289,8 @@ async def update_conversation(conversation_id: str, req: UpdateConversationReque
         msg_count = cnt_row[0]["count"] if cnt_row else 0
 
         last_row = await db.execute_fetchall(
-            "SELECT content FROM messages WHERE conversation_id = ? ORDER BY created_at DESC, rowid DESC LIMIT 1",
+            "SELECT content FROM messages WHERE conversation_id = ? AND role IN ('user', 'assistant') AND content != '' "
+            "ORDER BY created_at DESC, rowid DESC LIMIT 1",
             (conversation_id,),
         )
         last_msg = last_row[0]["content"] if last_row else None

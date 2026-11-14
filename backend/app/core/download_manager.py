@@ -1038,7 +1038,7 @@ class DownloadManager:
             return False
 
         try:
-            meta = parse_gguf_metadata(final_path)
+            meta = await asyncio.to_thread(parse_gguf_metadata, final_path)
             model_id = generate_stable_model_id(final_path, self.models_dir)
             file_size = final_path.stat().st_size
             now = time.time()

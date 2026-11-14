@@ -3,6 +3,7 @@ Mustang AI Local Model Library Core
 Discovers, canonicalizes, parses, caches, and synchronizes GGUF model files in SQLite.
 """
 
+import asyncio
 import hashlib
 import logging
 import os
@@ -148,9 +149,11 @@ async def scan_models_directory(models_dir: Path | None = None) -> dict[str, int
                     )
                     continue
 
-                # Cache miss or file modified: parse GGUF binary metadata
+                # Cache miss or file modified: parse GGUF binary metadata. Parsing reads the whole
+                # tokenizer (seconds and hundreds of MB for a multi-GB model), so it runs in a thread:
+                # on the event loop it froze every request, /health included, for the whole scan.
                 try:
-                    meta = parse_gguf_metadata(resolved)
+                    meta = await asyncio.to_thread(parse_gguf_metadata, resolved)
                 except Exception as parse_err:
                     logger.warning(f"Could not parse GGUF metadata for '{resolved.name}': {parse_err}")
                     continue
