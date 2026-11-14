@@ -87,6 +87,8 @@ Turn on **Agent** in the prompt bar, choose a **workspace folder**, and the mode
 - Tested with Qwen3.5 4B and a Qwen3.5 9B fine-tune. Models under about 3B misuse tools. A local model is much less reliable than a large cloud model: expect to review its work, and a short fresh chat per task works better than one very long chat.
 - Design, test reports and findings: `docs\milestone-5\`.
 
+**Performance:** the engine runs with n-gram speculative decoding (code rewrites 6 to 7 times faster, identical output), `--fit` (layers that do not fit in video memory go to the CPU instead of failing), one slot, a cap on thinking tokens, and no thinking while the agent works (Settings, Thinking). On the four test coding tasks this took the 9B from about 100 s to about 68 s. Measurements, what did not help, and what was not measured: `docs\PERFORMANCE.md`; benchmark: `scripts\bench_engine.py`.
+
 **Status:** M5 phases 0 to E are done (tools, loop, UI, file changes with approval and Undo, terminal, task list, search). Phase F (security review and release testing) is not done, and the installer is unsigned.
 
 ---
